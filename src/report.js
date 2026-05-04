@@ -88,5 +88,22 @@ export function exportResultsPdf(session, results) {
     });
   }
 
-  doc.save(`${session.student.name.replace(/\s+/g, "-").toLowerCase()}-math-placement-report.pdf`);
+  const fileName = `${session.student.name.replace(/\s+/g, "-").toLowerCase()}-math-placement-report.pdf`;
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    const url = URL.createObjectURL(doc.output("blob"));
+    const tab = window.open(url, "_blank");
+    if (!tab) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } else {
+    doc.save(fileName);
+  }
 }

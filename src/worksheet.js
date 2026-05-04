@@ -326,7 +326,24 @@ export async function exportWorksheetPdf(worksheet) {
     y = write(text, margin, y, { size: 11, width, after: 14 });
   });
 
-  doc.save(worksheet.fileName);
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    const url = URL.createObjectURL(doc.output("blob"));
+    const tab = window.open(url, "_blank");
+    if (!tab) {
+      // Popup blocked — fall back to in-page link
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } else {
+    doc.save(worksheet.fileName);
+  }
   delete window.__worksheetDoc;
 }
 
