@@ -1100,6 +1100,7 @@ document.addEventListener("click", (event) => {
     if (!confirm(`Reset worksheet history for ${profile.name}? This deletes saved worksheet records for this local profile.`)) return;
     const updated = resetWorksheetHistory(profile.id);
     if (activeProfile?.id === updated?.id) activeProfile = updated;
+    queueProfileSync(updated);
     renderAdminDashboard();
     if (activeProfile) renderDashboard();
     return;
