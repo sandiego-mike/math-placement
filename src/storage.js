@@ -314,6 +314,7 @@ export function scoreWorksheet(profileId, worksheetId, score) {
 export function resetWorksheetHistory(profileId) {
   return updateProfile(profileId, (profile) => {
     profile.worksheets = [];
+    profile.worksheetResetAt = new Date().toISOString();
     profile.learningPath = buildLearningPath(profile);
     return profile;
   });
@@ -352,7 +353,11 @@ export function importProfilesData(payload) {
 
     existing.tests = mergeById(existing.tests, cleanProfile.tests).sort((a, b) => new Date(b.date) - new Date(a.date));
     existing.practice = mergeById(existing.practice, cleanProfile.practice).sort((a, b) => new Date(b.date) - new Date(a.date));
-    existing.worksheets = mergeById(existing.worksheets, cleanProfile.worksheets).sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Use the latest reset timestamp from either side so a reset from any device wins
+    const resetAt = [existing.worksheetResetAt, cleanProfile.worksheetResetAt].filter(Boolean).sort().at(-1) ?? null;
+    if (resetAt) existing.worksheetResetAt = resetAt;
+    const afterReset = (sheets) => resetAt ? sheets.filter((w) => new Date(w.date) > new Date(resetAt)) : sheets;
+    existing.worksheets = mergeById(afterReset(existing.worksheets), afterReset(cleanProfile.worksheets)).sort((a, b) => new Date(b.date) - new Date(a.date));
     existing.topicProgress = mergeTopicProgressObjects(existing.topicProgress, cleanProfile.topicProgress);
     existing.learningPath = buildLearningPath(existing);
     existing.notes = existing.notes || cleanProfile.notes || "";
@@ -383,6 +388,7 @@ function normalizeImportedProfile(profile) {
     gradeHistory: Array.isArray(profile.gradeHistory) ? profile.gradeHistory : [],
     avatar: profile.avatar ?? null,
     leaderboardVisible: profile.leaderboardVisible ?? true,
+    worksheetResetAt: profile.worksheetResetAt ?? null,
   };
   normalized.learningPath = normalized.learningPath.length ? normalized.learningPath : buildLearningPath(normalized);
   return normalized;

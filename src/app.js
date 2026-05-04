@@ -734,19 +734,38 @@ function renderTeacherReport(profile) {
   `;
 }
 
+function worksheetGrade(score) {
+  if (score >= 90) return { letter: "A", color: "#16a34a", message: "Excellent! Ready to move forward." };
+  if (score >= 80) return { letter: "B", color: "#2563eb", message: "Strong work. Keep building on this." };
+  if (score >= 70) return { letter: "C", color: "#d97706", message: "Good effort. Review the missed questions." };
+  if (score >= 60) return { letter: "D", color: "#ea580c", message: "Keep practicing. Try a shorter set soon." };
+  return { letter: "F", color: "#dc2626", message: "More review needed. Focus on weak areas first." };
+}
+
 function renderWorksheetHistory(profile) {
   if (!profile.worksheets.length) return `<div class="review-card"><p>No worksheets yet.</p></div>`;
-  return profile.worksheets.slice(0, 8).map((worksheet) => `
-    <div class="review-card">
-      <h4>${new Date(worksheet.date).toLocaleDateString()} • ${escapeHtml(worksheet.difficulty)}</h4>
-      <p>${worksheet.questionCount} questions • ${escapeHtml(worksheet.topics.slice(0, 4).join(", "))}</p>
-      <p>${worksheet.completed ? `Completed: ${worksheet.score}%` : "Not scored yet"}</p>
-      <div class="worksheet-score">
-        <input type="number" min="0" max="100" placeholder="Score %" data-worksheet-score="${worksheet.id}" />
-        <button class="secondary small-button" type="button" data-score-worksheet="${worksheet.id}">Save Score</button>
+  return profile.worksheets.slice(0, 8).map((worksheet) => {
+    const grade = worksheet.completed ? worksheetGrade(worksheet.score) : null;
+    return `
+      <div class="review-card">
+        <h4>${new Date(worksheet.date).toLocaleDateString()} • ${escapeHtml(worksheet.difficulty)}</h4>
+        <p>${worksheet.questionCount} questions • ${escapeHtml(worksheet.topics.slice(0, 4).join(", "))}</p>
+        ${grade ? `
+          <div style="display:flex;align-items:center;gap:12px;margin:10px 0 6px">
+            <span style="font-size:2rem;font-weight:800;line-height:1;color:${grade.color}">${grade.letter}</span>
+            <div>
+              <strong style="color:${grade.color};font-size:1rem">${worksheet.score}%</strong>
+              <div style="font-size:0.84rem;color:var(--muted);margin-top:2px">${grade.message}</div>
+            </div>
+          </div>
+        ` : `<p style="color:var(--muted);font-size:0.88rem;margin:6px 0">Not scored yet — enter your score below</p>`}
+        <div class="worksheet-score">
+          <input type="number" min="0" max="100" placeholder="${worksheet.completed ? "Update score" : "Score %"}" data-worksheet-score="${worksheet.id}" />
+          <button class="secondary small-button" type="button" data-score-worksheet="${worksheet.id}">Save Score</button>
+        </div>
       </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
 function showDiagnosticQuestion(question) {
