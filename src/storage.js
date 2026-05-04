@@ -53,7 +53,7 @@ export function clearActiveProfileId() {
 export function upsertProfile({ name, grade }) {
   const profiles = getProfiles();
   const normalized = name.trim().toLowerCase();
-  let profile = profiles.find((item) => item.name.trim().toLowerCase() === normalized);
+  let profile = profiles.find((item) => profileMatchesName(item, normalized));
   if (!profile) {
     profile = {
       id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -87,12 +87,38 @@ export function importStudentProfiles(students) {
 
   students.forEach((student) => {
     const normalized = student.name.trim().toLowerCase();
-    const existing = profiles.find((profile) => profile.name.trim().toLowerCase() === normalized);
+    const incomingAliases = mergeAliases([], student.aliases);
+    const matchingProfiles = profiles.filter(
+      (profile) =>
+        profileMatchesName(profile, normalized) ||
+        incomingAliases.some((alias) => profileMatchesName(profile, alias.trim().toLowerCase())),
+    );
+    const existing = matchingProfiles.find((profile) => profile.name.trim().toLowerCase() === normalized) ?? matchingProfiles[0];
     if (existing) {
+      if (existing.name !== student.name.trim()) {
+        existing.name = student.name.trim();
+        changed = true;
+      }
       if (String(existing.grade) !== String(student.grade)) {
         existing.grade = String(student.grade);
         changed = true;
       }
+      const aliases = mergeAliases(existing.aliases, incomingAliases);
+      if (aliases.length !== (existing.aliases ?? []).length) {
+        existing.aliases = aliases;
+        changed = true;
+      }
+      matchingProfiles.filter((profile) => profile !== existing).forEach((duplicate) => {
+        existing.tests = mergeById(existing.tests, duplicate.tests).sort((a, b) => new Date(b.date) - new Date(a.date));
+        existing.practice = mergeById(existing.practice, duplicate.practice).sort((a, b) => new Date(b.date) - new Date(a.date));
+        existing.worksheets = mergeById(existing.worksheets, duplicate.worksheets).sort((a, b) => new Date(b.date) - new Date(a.date));
+        existing.topicProgress = mergeTopicProgressObjects(existing.topicProgress, duplicate.topicProgress);
+        existing.aliases = mergeAliases(existing.aliases, [duplicate.name, ...(duplicate.aliases ?? [])]);
+        const index = profiles.findIndex((profile) => profile.id === duplicate.id);
+        if (index >= 0) profiles.splice(index, 1);
+        changed = true;
+      });
+      existing.learningPath = buildLearningPath(existing);
       return;
     }
 
@@ -110,6 +136,7 @@ export function importStudentProfiles(students) {
       activityStatus: "Profile created",
       lastGradeRolloverYear: null,
       notes: student.notes ?? "",
+      aliases: incomingAliases,
     });
     changed = true;
   });
@@ -170,6 +197,16 @@ export function nextAnnualGrade(grade) {
 
 export function getProfile(profileId = getActiveProfileId()) {
   return getProfiles().find((profile) => profile.id === profileId) ?? null;
+}
+
+function profileMatchesName(profile, normalizedName) {
+  const canonical = profile.name?.trim().toLowerCase();
+  if (canonical === normalizedName) return true;
+  return (profile.aliases ?? []).some((alias) => alias.trim().toLowerCase() === normalizedName);
+}
+
+function mergeAliases(existing = [], incoming = []) {
+  return [...new Set([...existing, ...incoming].filter(Boolean).map((alias) => String(alias).trim()).filter(Boolean))];
 }
 
 export function updateProfile(profileId, updater) {
@@ -302,7 +339,7 @@ export function importProfilesData(payload) {
   incoming.forEach((rawProfile) => {
     if (!rawProfile?.name || !rawProfile?.grade) return;
     const normalized = rawProfile.name.trim().toLowerCase();
-    const existing = profiles.find((profile) => profile.name.trim().toLowerCase() === normalized && String(profile.grade) === String(rawProfile.grade));
+    const existing = profiles.find((profile) => profileMatchesName(profile, normalized) || rawProfile.aliases?.some((alias) => profileMatchesName(profile, String(alias).trim().toLowerCase())));
     const cleanProfile = normalizeImportedProfile(rawProfile);
 
     if (!existing) {
@@ -317,6 +354,7 @@ export function importProfilesData(payload) {
     existing.topicProgress = mergeTopicProgressObjects(existing.topicProgress, cleanProfile.topicProgress);
     existing.learningPath = buildLearningPath(existing);
     existing.notes = existing.notes || cleanProfile.notes || "";
+    existing.aliases = mergeAliases(existing.aliases, cleanProfile.aliases);
     updatedProfiles += 1;
   });
 
@@ -336,6 +374,7 @@ function normalizeImportedProfile(profile) {
     topicProgress: profile.topicProgress && typeof profile.topicProgress === "object" ? profile.topicProgress : {},
     learningPath: Array.isArray(profile.learningPath) ? profile.learningPath : [],
     notes: profile.notes ?? "",
+    aliases: mergeAliases([], profile.aliases),
     lastGradeRolloverYear: profile.lastGradeRolloverYear ?? null,
     gradeHistory: Array.isArray(profile.gradeHistory) ? profile.gradeHistory : [],
   };
@@ -435,7 +474,7 @@ export function importHistoricalReports(reports) {
 
   reports.forEach((report) => {
     const normalized = report.name.trim().toLowerCase();
-    let profile = profiles.find((item) => item.name.trim().toLowerCase() === normalized && String(item.grade) === String(report.grade));
+    let profile = profiles.find((item) => profileMatchesName(item, normalized));
     if (!profile) {
       profile = {
         id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,

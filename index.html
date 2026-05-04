@@ -90,6 +90,21 @@
           </div>
 
           <section class="report-panel">
+            <h3>Cloud Sync</h3>
+            <p class="hint-text" id="supabaseStatus">Supabase project: https://tzssykhgfxpemfotxnkp.supabase.co</p>
+            <label>
+              Supabase anon public key
+              <input id="supabaseAnonKey" type="password" autocomplete="off" placeholder="Paste anon public key" />
+            </label>
+            <div class="actions wrap admin-transfer-actions">
+              <button class="secondary" id="saveSupabaseKey" type="button">Save Key</button>
+              <button class="secondary" id="testSupabase" type="button">Test Connection</button>
+              <button class="secondary" id="pushSupabase" type="button">Upload Local Results</button>
+              <button class="secondary" id="pullSupabase" type="button">Download Cloud Results</button>
+            </div>
+          </section>
+
+          <section class="report-panel">
             <h3>Results Import / Export</h3>
             <p class="hint-text" id="adminTransferMessage">Export student results as a backup file, or import a saved file to add results back into this browser.</p>
             <div class="actions wrap admin-transfer-actions">

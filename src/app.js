@@ -32,14 +32,22 @@ import {
 import { exportResultsPdf } from "./report.js";
 import { buildDailyWorksheet, exportWorksheetPdf } from "./worksheet.js";
 import { importedReports } from "./importedReports.js";
+import {
+  getSupabaseConfig,
+  pullProfilesFromSupabase,
+  pushProfilesToSupabase,
+  saveSupabaseConfig,
+  syncProfileToSupabase,
+  testSupabaseConnection,
+} from "./supabaseSync.js";
 
 const seededStudentProfiles = [
-  { name: "Halle Arias", grade: "5", notes: "5th grade going to 6th" },
-  { name: "Hunter Arias", grade: "11", notes: "11th grade going to 12th" },
-  { name: "Austin Arias", grade: "10", notes: "10th grade going to 11th" },
-  { name: "Hannah Arias", grade: "7", notes: "7th grade going to 8th" },
-  { name: "Bella Arias", grade: "5", notes: "5th grade" },
-  { name: "Greyson Arias", grade: "7", notes: "7th grade" },
+  { name: "Halle Arias", grade: "5", notes: "5th grade going to 6th", aliases: ["Halle"] },
+  { name: "Hunter Arias", grade: "11", notes: "11th grade going to 12th", aliases: ["Hunter"] },
+  { name: "Austin Arias", grade: "10", notes: "10th grade going to 11th", aliases: ["Austin"] },
+  { name: "Hannah Arias", grade: "7", notes: "7th grade going to 8th", aliases: ["Hannah"] },
+  { name: "Bella Arias", grade: "5", notes: "5th grade", aliases: ["Bella"] },
+  { name: "Greyson Arias", grade: "7", notes: "7th grade", aliases: ["Greyson"] },
 ];
 
 const playfulBoys = new Set(["liam devries", "austin arias", "greyson arias", "hunter arias"]);
@@ -148,6 +156,12 @@ const elements = {
   exportAllProfiles: $("#exportAllProfiles"),
   importProfilesFile: $("#importProfilesFile"),
   adminTransferMessage: $("#adminTransferMessage"),
+  supabaseStatus: $("#supabaseStatus"),
+  supabaseAnonKey: $("#supabaseAnonKey"),
+  saveSupabaseKey: $("#saveSupabaseKey"),
+  testSupabase: $("#testSupabase"),
+  pushSupabase: $("#pushSupabase"),
+  pullSupabase: $("#pullSupabase"),
   backToAdminButtons: document.querySelectorAll("[data-back-admin]"),
 };
 
@@ -162,6 +176,7 @@ importHistoricalReports(importedReports);
 importStudentProfiles(seededStudentProfiles);
 applyAnnualGradeRollover();
 refreshProfileSelect();
+renderSupabaseStatus();
 
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
   month: "short",
@@ -183,6 +198,7 @@ elements.studentForm.addEventListener("submit", (event) => {
   if (selectedProfileId) setActiveProfileId(activeProfile.id);
   openedFromAdmin = false;
   activeProfile = touchProfile(activeProfile.id, "Opened dashboard") ?? activeProfile;
+  queueProfileSync(activeProfile);
   elements.studentName.value = activeProfile.name;
   elements.gradeLevel.value = activeProfile.grade;
   renderDashboard();
@@ -223,6 +239,7 @@ elements.startMiniTest.addEventListener("click", () => {
 elements.dashboardPractice.addEventListener("click", () => {
   if (!activeProfile?.tests.length) return;
   activeProfile = touchProfile(activeProfile.id, "Started practice") ?? activeProfile;
+  queueProfileSync(activeProfile);
   results = resultsFromProfileTest(activeProfile.tests[0]);
   practiceState = createPracticeState(results);
   showScreen("practice");
@@ -236,12 +253,14 @@ elements.createWorksheet.addEventListener("click", async () => {
   });
   await exportWorksheetPdf(worksheet);
   activeProfile = recordWorksheet(activeProfile.id, worksheet);
+  queueProfileSync(activeProfile);
   renderDashboard();
 });
 
 elements.exportMyResults.addEventListener("click", () => {
   if (!activeProfile) return;
   activeProfile = touchProfile(activeProfile.id, "Exported results") ?? activeProfile;
+  queueProfileSync(activeProfile);
   downloadJson(exportProfilesData([activeProfile.id]), `${slugify(activeProfile.name)}-math-placement-results.json`);
   renderDashboard();
 });
@@ -255,7 +274,10 @@ elements.submitAnswer.addEventListener("click", () => {
 
   const outcome = submitDiagnosticAnswer(session, answer);
   saveSession(serializeSession(session));
-  if (activeProfile) activeProfile = touchProfile(activeProfile.id, "Taking a test") ?? activeProfile;
+  if (activeProfile) {
+    activeProfile = touchProfile(activeProfile.id, "Taking a test") ?? activeProfile;
+    queueProfileSync(activeProfile);
+  }
   lockAnswerArea(elements.answerArea);
   elements.answerHint.textContent = outcome.correct
     ? studentCorrectMessage()
@@ -269,7 +291,10 @@ elements.submitAnswer.addEventListener("click", () => {
 elements.nextQuestion.addEventListener("click", () => {
   if (session.completedAt) {
     results = calculateResults(session);
-    if (activeProfile) activeProfile = recordTest(activeProfile.id, session, results);
+    if (activeProfile) {
+      activeProfile = recordTest(activeProfile.id, session, results);
+      queueProfileSync(activeProfile);
+    }
     renderResults();
     showScreen("results");
     return;
@@ -295,7 +320,10 @@ elements.submitPractice.addEventListener("click", () => {
   }
 
   const attempt = submitPracticeAnswer(practiceState, answer);
-  if (activeProfile) activeProfile = recordPractice(activeProfile.id, attempt);
+  if (activeProfile) {
+    activeProfile = recordPractice(activeProfile.id, attempt);
+    queueProfileSync(activeProfile);
+  }
   lockAnswerArea(elements.practiceAnswerArea);
   renderPracticeStatus();
   elements.practiceFeedback.innerHTML = `
@@ -346,6 +374,37 @@ elements.importProfilesFile.addEventListener("change", async () => {
     elements.importProfilesFile.value = "";
   }
 });
+
+elements.saveSupabaseKey.addEventListener("click", () => {
+  saveSupabaseConfig({ anonKey: elements.supabaseAnonKey.value });
+  elements.supabaseAnonKey.value = "";
+  renderSupabaseStatus("Supabase key saved. This browser can now sync results.");
+});
+
+elements.testSupabase.addEventListener("click", async () => {
+  await runSupabaseAction("Testing Supabase connection...", async () => {
+    await testSupabaseConnection();
+    return "Supabase connection works.";
+  });
+});
+
+elements.pushSupabase.addEventListener("click", async () => {
+  await runSupabaseAction("Uploading local results...", async () => {
+    const summary = await pushProfilesToSupabase(getProfiles());
+    return `Uploaded ${summary.pushed} profile${summary.pushed === 1 ? "" : "s"} to Supabase.`;
+  });
+});
+
+elements.pullSupabase.addEventListener("click", async () => {
+  await runSupabaseAction("Downloading cloud results...", async () => {
+    const profiles = await pullProfilesFromSupabase();
+    const summary = importProfilesData({ profiles });
+    refreshProfileSelect();
+    renderAdminDashboard();
+    return `Downloaded cloud results: ${summary.addedProfiles} new, ${summary.updatedProfiles} updated.`;
+  });
+});
+
 elements.backToDashboard.addEventListener("click", () => {
   renderDashboard();
   showScreen("dashboard");
@@ -388,6 +447,7 @@ function resetAll() {
 function startDiagnosticForProfile(grade, options = {}) {
   const status = options.challengeMode ? "Started challenge mode" : options.miniTest ? "Started a daily mini test" : "Started a test";
   activeProfile = touchProfile(activeProfile.id, status) ?? activeProfile;
+  queueProfileSync(activeProfile);
   session = createSession({
     name: activeProfile.name,
     grade,
@@ -918,8 +978,35 @@ document.addEventListener("click", (event) => {
   const input = document.querySelector(`[data-worksheet-score="${CSS.escape(id)}"]`);
   if (!input?.value) return;
   activeProfile = scoreWorksheet(activeProfile.id, id, input.value);
+  queueProfileSync(activeProfile);
   renderDashboard();
 });
+
+function renderSupabaseStatus(message = "") {
+  const config = getSupabaseConfig();
+  if (!elements.supabaseStatus) return;
+  const base = config.enabled
+    ? "Supabase sync is configured for https://tzssykhgfxpemfotxnkp.supabase.co."
+    : "Supabase project: https://tzssykhgfxpemfotxnkp.supabase.co. Add the anon public key to enable cloud sync.";
+  elements.supabaseStatus.textContent = message || base;
+}
+
+async function runSupabaseAction(workingMessage, action) {
+  renderSupabaseStatus(workingMessage);
+  try {
+    const message = await action();
+    renderSupabaseStatus(message);
+  } catch (error) {
+    renderSupabaseStatus(error instanceof Error ? error.message : "Supabase sync failed.");
+  }
+}
+
+function queueProfileSync(profile) {
+  if (!profile || !getSupabaseConfig().enabled) return;
+  syncProfileToSupabase(profile).catch((error) => {
+    console.warn("Supabase sync failed", error);
+  });
+}
 
 function downloadJson(data, fileName) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
