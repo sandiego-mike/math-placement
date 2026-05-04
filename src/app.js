@@ -199,6 +199,26 @@ if (adminSessionActive) {
   }
 }
 
+// Auto-pull from Supabase on load so cross-device changes (avatars, new results) appear automatically
+(async () => {
+  if (!getSupabaseConfig().enabled) return;
+  try {
+    const profiles = await pullProfilesFromSupabase();
+    const summary = importProfilesData({ profiles });
+    if (summary.addedProfiles + summary.updatedProfiles > 0) {
+      refreshProfileSelect();
+      renderLeaderboard();
+      if (adminSessionActive) renderAdminDashboard();
+      if (activeProfile) {
+        activeProfile = getProfile(activeProfile.id) ?? activeProfile;
+        renderDashboard();
+      }
+    }
+  } catch {
+    // silent — no internet or Supabase down shouldn't break the app
+  }
+})();
+
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
   month: "short",
   day: "numeric",
@@ -461,7 +481,8 @@ elements.adminStudents.addEventListener("change", async (event) => {
   const profileId = uploadInput.dataset.uploadAvatar;
   try {
     const dataUrl = await readAndResizeAvatar(file);
-    updateProfile(profileId, (p) => { p.avatar = dataUrl; return p; });
+    const updated = updateProfile(profileId, (p) => { p.avatar = dataUrl; return p; });
+    queueProfileSync(updated);
     renderAdminDashboard();
     renderLeaderboard();
   } catch {
@@ -1010,7 +1031,8 @@ document.addEventListener("click", (event) => {
 
   const setAvatar = event.target.closest("[data-set-avatar]");
   if (setAvatar) {
-    updateProfile(setAvatar.dataset.setAvatar, (p) => { p.avatar = setAvatar.dataset.emoji; return p; });
+    const updated = updateProfile(setAvatar.dataset.setAvatar, (p) => { p.avatar = setAvatar.dataset.emoji; return p; });
+    queueProfileSync(updated);
     renderAdminDashboard();
     renderLeaderboard();
     return;
@@ -1018,10 +1040,11 @@ document.addEventListener("click", (event) => {
 
   const toggleLeaderboard = event.target.closest("[data-toggle-leaderboard]");
   if (toggleLeaderboard) {
-    updateProfile(toggleLeaderboard.dataset.toggleLeaderboard, (p) => {
+    const updated = updateProfile(toggleLeaderboard.dataset.toggleLeaderboard, (p) => {
       p.leaderboardVisible = p.leaderboardVisible === false ? true : false;
       return p;
     });
+    queueProfileSync(updated);
     renderAdminDashboard();
     renderLeaderboard();
     return;
