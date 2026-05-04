@@ -442,6 +442,22 @@ elements.startChallengeMode.addEventListener("click", () => {
   startDiagnosticForProfile(results?.nextLevelGrade ?? activeProfile.grade, { challengeMode: true });
 });
 
+elements.adminStudents.addEventListener("change", async (event) => {
+  const uploadInput = event.target.closest("[data-upload-avatar]");
+  if (!uploadInput) return;
+  const file = uploadInput.files?.[0];
+  if (!file) return;
+  const profileId = uploadInput.dataset.uploadAvatar;
+  try {
+    const dataUrl = await readAndResizeAvatar(file);
+    updateProfile(profileId, (p) => { p.avatar = dataUrl; return p; });
+    renderAdminDashboard();
+    renderLeaderboard();
+  } catch {
+    // silently ignore bad image files
+  }
+});
+
 function restartTest() {
   if (!confirm("Restart this test? This will clear the current question, score, adaptive level, missed questions, practice recommendations, and saved session.")) return;
   resetAll();
@@ -543,15 +559,15 @@ function renderAdminStudentCard(profile) {
   const progress = latest ? latest.placement : "Diagnostic needed";
   const weakAreas = latest?.missedTopics?.length ? latest.missedTopics.slice(0, 3).join(", ") : "No major weaknesses detected";
   const activity = activityLabel(profile);
-  const avatar = profile.avatar || "⭐";
+  const avatarHtml = avatarDisplay(profile.avatar, 52);
   const visible = profile.leaderboardVisible !== false;
   const avatarOptions = MATH_AVATARS.map(
     (emoji) => `<button class="avatar-option" type="button" data-set-avatar="${profile.id}" data-emoji="${escapeHtml(emoji)}">${emoji}</button>`
-  ).join("");
+  ).join("") + `<label class="avatar-upload-label" title="Upload a photo">📷 Upload<input type="file" accept="image/*" data-upload-avatar="${profile.id}" /></label>`;
   return `
     <article class="review-card">
       <div class="admin-card-top">
-        <button class="admin-avatar-bubble" type="button" data-pick-avatar="${profile.id}" title="Change avatar">${avatar}</button>
+        <button class="admin-avatar-bubble" type="button" data-pick-avatar="${profile.id}" title="Change avatar">${avatarHtml}</button>
         <div>
           <h4 style="margin:0">${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</h4>
           <p style="margin:4px 0 0;font-size:0.82rem;color:var(--muted)">${escapeHtml(activity.status)} • ${escapeHtml(activity.when)}</p>
@@ -1047,7 +1063,7 @@ function renderLeaderboard() {
   elements.leaderboardSection.classList.remove("hidden");
   elements.leaderboardGrid.innerHTML = awards.map((award) => {
     const styles = CATEGORY_STYLES[award.category] ?? CATEGORY_STYLES["Top Score"];
-    const avatar = award.student.avatar || "⭐";
+    const avatar = avatarDisplay(award.student.avatar, 56);
     return `
       <article class="highlight-card" style="--card-accent: ${styles.accent}">
         <div class="highlight-avatar">${avatar}</div>
@@ -1085,6 +1101,35 @@ function queueProfileSync(profile) {
   if (!profile || !getSupabaseConfig().enabled) return;
   syncProfileToSupabase(profile).catch((error) => {
     console.warn("Supabase sync failed", error);
+  });
+}
+
+function avatarDisplay(avatar, size) {
+  if (avatar?.startsWith("data:")) {
+    return `<img src="${avatar}" width="${size}" height="${size}" style="border-radius:999px;object-fit:cover;display:block" />`;
+  }
+  return avatar || "⭐";
+}
+
+function readAndResizeAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 100;
+        const ctx = canvas.getContext("2d");
+        const min = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, 100, 100);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   });
 }
 
