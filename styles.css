@@ -717,9 +717,10 @@ select {
 /* ── Leaderboard ─────────────────────────────────────────────── */
 
 .leaderboard-section {
-  margin-top: 40px;
-  padding-top: 32px;
-  border-top: 1px solid var(--line);
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
 }
 
 .leaderboard-header {
@@ -733,8 +734,9 @@ select {
 
 .leaderboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
   gap: 16px;
+  justify-items: stretch;
 }
 
 .highlight-card {
