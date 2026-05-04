@@ -12,9 +12,11 @@ import { DIFFICULTY_LABELS } from "./questions.js";
 import {
   clearActiveProfileId,
   clearSession,
+  exportProfilesData,
   getProfile,
   getProfiles,
   importHistoricalReports,
+  importProfilesData,
   importStudentProfiles,
   recordPractice,
   recordTest,
@@ -23,6 +25,7 @@ import {
   scoreWorksheet,
   saveSession,
   setActiveProfileId,
+  touchProfile,
   upsertProfile,
 } from "./storage.js";
 import { exportResultsPdf } from "./report.js";
@@ -87,6 +90,7 @@ const elements = {
   missedReview: $("#missedReview"),
   practiceWeakAreas: $("#practiceWeakAreas"),
   exportPdf: $("#exportPdf"),
+  exportMyResults: $("#exportMyResults"),
   newTest: $("#newTest"),
   startNextLevel: $("#startNextLevel"),
   startChallengeMode: $("#startChallengeMode"),
@@ -123,6 +127,9 @@ const elements = {
   practiceDashboard: $("#practiceDashboard"),
   adminStudents: $("#adminStudents"),
   adminLogout: $("#adminLogout"),
+  exportAllProfiles: $("#exportAllProfiles"),
+  importProfilesFile: $("#importProfilesFile"),
+  adminTransferMessage: $("#adminTransferMessage"),
   backToAdminButtons: document.querySelectorAll("[data-back-admin]"),
 };
 
@@ -156,6 +163,7 @@ elements.studentForm.addEventListener("submit", (event) => {
   if (!activeProfile) return;
   if (selectedProfileId) setActiveProfileId(activeProfile.id);
   openedFromAdmin = false;
+  activeProfile = touchProfile(activeProfile.id, "Opened dashboard") ?? activeProfile;
   elements.studentName.value = activeProfile.name;
   elements.gradeLevel.value = activeProfile.grade;
   renderDashboard();
@@ -190,6 +198,7 @@ elements.startFromDashboard.addEventListener("click", () => {
 
 elements.dashboardPractice.addEventListener("click", () => {
   if (!activeProfile?.tests.length) return;
+  activeProfile = touchProfile(activeProfile.id, "Started practice") ?? activeProfile;
   results = resultsFromProfileTest(activeProfile.tests[0]);
   practiceState = createPracticeState(results);
   showScreen("practice");
@@ -206,6 +215,13 @@ elements.createWorksheet.addEventListener("click", async () => {
   renderDashboard();
 });
 
+elements.exportMyResults.addEventListener("click", () => {
+  if (!activeProfile) return;
+  activeProfile = touchProfile(activeProfile.id, "Exported results") ?? activeProfile;
+  downloadJson(exportProfilesData([activeProfile.id]), `${slugify(activeProfile.name)}-math-placement-results.json`);
+  renderDashboard();
+});
+
 elements.submitAnswer.addEventListener("click", () => {
   const answer = getAnswer(elements.answerArea, session.currentQuestion.type);
   if (!answer) {
@@ -215,6 +231,7 @@ elements.submitAnswer.addEventListener("click", () => {
 
   const outcome = submitDiagnosticAnswer(session, answer);
   saveSession(serializeSession(session));
+  if (activeProfile) activeProfile = touchProfile(activeProfile.id, "Taking a test") ?? activeProfile;
   lockAnswerArea(elements.answerArea);
   elements.answerHint.textContent = outcome.correct ? "Correct. Nice work." : `Correct answer: ${session.history.at(-1).answer}`;
   elements.answerHint.style.color = outcome.correct ? "var(--green)" : "var(--red)";
@@ -282,6 +299,27 @@ elements.adminLogout.addEventListener("click", () => {
   openedFromAdmin = false;
   showScreen("start");
 });
+
+elements.exportAllProfiles.addEventListener("click", () => {
+  downloadJson(exportProfilesData(), `math-placement-all-results-${new Date().toISOString().slice(0, 10)}.json`);
+  elements.adminTransferMessage.textContent = "Exported all student results.";
+});
+
+elements.importProfilesFile.addEventListener("change", async () => {
+  const file = elements.importProfilesFile.files?.[0];
+  if (!file) return;
+  try {
+    const payload = JSON.parse(await file.text());
+    const summary = importProfilesData(payload);
+    refreshProfileSelect();
+    renderAdminDashboard();
+    elements.adminTransferMessage.textContent = `Imported results: ${summary.addedProfiles} new profile${summary.addedProfiles === 1 ? "" : "s"}, ${summary.updatedProfiles} updated.`;
+  } catch (error) {
+    elements.adminTransferMessage.textContent = error instanceof Error ? error.message : "Could not import that results file.";
+  } finally {
+    elements.importProfilesFile.value = "";
+  }
+});
 elements.backToDashboard.addEventListener("click", () => {
   renderDashboard();
   showScreen("dashboard");
@@ -322,6 +360,7 @@ function resetAll() {
 }
 
 function startDiagnosticForProfile(grade, options = {}) {
+  activeProfile = touchProfile(activeProfile.id, options.challengeMode ? "Started challenge mode" : "Started a test") ?? activeProfile;
   session = createSession({
     name: activeProfile.name,
     grade,
@@ -394,6 +433,7 @@ function renderAdminStudentCard(profile) {
   const latestScore = latest ? `${latest.score}%` : "No test yet";
   const progress = latest ? latest.placement : "Diagnostic needed";
   const weakAreas = latest?.missedTopics?.length ? latest.missedTopics.slice(0, 3).join(", ") : "No major weaknesses detected";
+  const activity = activityLabel(profile);
   return `
     <article class="review-card">
       <h4>${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</h4>
@@ -402,8 +442,10 @@ function renderAdminStudentCard(profile) {
       <p><strong>Practice completed:</strong> ${profile.practice.length} question${profile.practice.length === 1 ? "" : "s"}</p>
       <p><strong>Worksheets:</strong> ${profile.worksheets.length}</p>
       <p><strong>Focus:</strong> ${escapeHtml(weakAreas)}</p>
+      <p><strong>Activity:</strong> ${escapeHtml(activity.status)} • ${escapeHtml(activity.when)}</p>
       <div class="actions wrap">
         <button class="secondary small-button" type="button" data-admin-open="${profile.id}">Open Dashboard</button>
+        <button class="secondary small-button" type="button" data-export-profile="${profile.id}">Export Results</button>
         <button class="ghost small-button" type="button" data-reset-worksheets="${profile.id}">Reset Worksheet History</button>
       </div>
     </article>
@@ -419,6 +461,7 @@ function refreshProfileSelect() {
 
 function renderDashboard() {
   if (!activeProfile) return;
+  if (!openedFromAdmin) activeProfile = touchProfile(activeProfile.id, "Viewing dashboard") ?? activeProfile;
   const latest = activeProfile.tests[0];
   elements.dashboardStudent.textContent = `${activeProfile.name}, Grade ${activeProfile.grade}`;
   elements.dashboardScore.textContent = latest ? `${latest.score}%` : "--";
@@ -802,6 +845,15 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const exportProfile = event.target.closest("[data-export-profile]");
+  if (exportProfile) {
+    const profile = getProfile(exportProfile.dataset.exportProfile);
+    if (!profile) return;
+    downloadJson(exportProfilesData([profile.id]), `${slugify(profile.name)}-math-placement-results.json`);
+    elements.adminTransferMessage.textContent = `Exported ${profile.name}'s results.`;
+    return;
+  }
+
   const resetWorksheets = event.target.closest("[data-reset-worksheets]");
   if (resetWorksheets) {
     const profile = getProfile(resetWorksheets.dataset.resetWorksheets);
@@ -822,6 +874,36 @@ document.addEventListener("click", (event) => {
   activeProfile = scoreWorksheet(activeProfile.id, id, input.value);
   renderDashboard();
 });
+
+function downloadJson(data, fileName) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function activityLabel(profile) {
+  if (!profile.lastActiveAt) return { status: "Not active yet", when: "No activity recorded" };
+  const last = new Date(profile.lastActiveAt);
+  const minutes = Math.round((Date.now() - last.getTime()) / 60000);
+  const status = minutes <= 10 ? "Active now" : profile.activityStatus || "Last used";
+  if (minutes < 1) return { status, when: "just now" };
+  if (minutes < 60) return { status, when: `${minutes} minute${minutes === 1 ? "" : "s"} ago` };
+  if (minutes < 1440) {
+    const hours = Math.round(minutes / 60);
+    return { status, when: `${hours} hour${hours === 1 ? "" : "s"} ago` };
+  }
+  return { status, when: last.toLocaleDateString() };
+}
+
+function slugify(value) {
+  return String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
 
 function seedLearningPath() {
   return [

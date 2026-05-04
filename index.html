@@ -90,6 +90,18 @@
           </div>
 
           <section class="report-panel">
+            <h3>Results Import / Export</h3>
+            <p class="hint-text" id="adminTransferMessage">Export student results as a backup file, or import a saved file to add results back into this browser.</p>
+            <div class="actions wrap admin-transfer-actions">
+              <button class="secondary" id="exportAllProfiles" type="button">Export All Results</button>
+              <label class="file-import-button">
+                Import Results
+                <input id="importProfilesFile" type="file" accept="application/json,.json" />
+              </label>
+            </div>
+          </section>
+
+          <section class="report-panel">
             <h3>Students</h3>
             <div id="adminStudents" class="topic-list"></div>
           </section>
@@ -157,6 +169,7 @@
           <div class="actions wrap">
             <button class="primary" id="startFromDashboard" type="button">Start Test</button>
             <button class="secondary" id="dashboardPractice" type="button">Practice Weak Areas</button>
+            <button class="secondary" id="exportMyResults" type="button">Export My Results</button>
             <label class="compact-select">
               Worksheet length
               <select id="worksheetLength">

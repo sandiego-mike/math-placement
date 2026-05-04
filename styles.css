@@ -188,6 +188,32 @@ select {
   background: #fff;
 }
 
+.file-import-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 0 18px;
+  color: var(--ink);
+  background: #e7eef8;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.file-import-button input {
+  position: absolute;
+  width: 1px;
+  min-height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-transfer-actions {
+  justify-content: flex-start;
+  margin-top: 0;
+}
+
 .test-header,
 .results-hero {
   display: flex;

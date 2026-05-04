@@ -65,6 +65,8 @@ export function upsertProfile({ name, grade }) {
       worksheets: [],
       topicProgress: {},
       learningPath: [],
+      lastActiveAt: new Date().toISOString(),
+      activityStatus: "Profile created",
     };
     profiles.push(profile);
   } else {
@@ -101,6 +103,8 @@ export function importStudentProfiles(students) {
       worksheets: [],
       topicProgress: {},
       learningPath: [],
+      lastActiveAt: new Date().toISOString(),
+      activityStatus: "Profile created",
       notes: student.notes ?? "",
     });
     changed = true;
@@ -122,6 +126,14 @@ export function updateProfile(profileId, updater) {
   profiles[index] = nextProfile;
   saveProfiles(profiles);
   return nextProfile;
+}
+
+export function touchProfile(profileId, status = "Using account") {
+  return updateProfile(profileId, (profile) => {
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = status;
+    return profile;
+  });
 }
 
 export function recordTest(profileId, session, results) {
@@ -147,6 +159,8 @@ export function recordTest(profileId, session, results) {
     profile.tests.unshift(testRecord);
     profile.topicProgress = mergeTopicProgress(profile.topicProgress, results.topicResults, testRecord.date);
     profile.learningPath = buildLearningPath(profile);
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = "Completed a test";
     return profile;
   });
 }
@@ -163,6 +177,8 @@ export function recordPractice(profileId, attempt) {
       studentAnswer: attempt.studentAnswer,
     });
     profile.learningPath = buildLearningPath(profile);
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = attempt.correct ? "Practicing correctly" : "Practicing with review";
     return profile;
   });
 }
@@ -180,6 +196,8 @@ export function recordWorksheet(profileId, worksheet) {
       questionCount: worksheet.questions.length,
     });
     profile.learningPath = buildLearningPath(profile);
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = "Created a worksheet";
     return profile;
   });
 }
@@ -193,6 +211,8 @@ export function scoreWorksheet(profileId, worksheetId, score) {
       worksheet.completedAt = new Date().toISOString();
     }
     profile.learningPath = buildLearningPath(profile);
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = "Scored a worksheet";
     return profile;
   });
 }
@@ -203,6 +223,86 @@ export function resetWorksheetHistory(profileId) {
     profile.learningPath = buildLearningPath(profile);
     return profile;
   });
+}
+
+export function exportProfilesData(profileIds = null) {
+  const selected = new Set(profileIds ?? []);
+  const profiles = getProfiles().filter((profile) => !profileIds || selected.has(profile.id));
+  return {
+    app: "adaptive-math-placement",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    profiles,
+  };
+}
+
+export function importProfilesData(payload) {
+  const incoming = Array.isArray(payload) ? payload : payload?.profiles;
+  if (!Array.isArray(incoming)) throw new Error("This file does not look like a math placement results export.");
+
+  const profiles = getProfiles();
+  let addedProfiles = 0;
+  let updatedProfiles = 0;
+
+  incoming.forEach((rawProfile) => {
+    if (!rawProfile?.name || !rawProfile?.grade) return;
+    const normalized = rawProfile.name.trim().toLowerCase();
+    const existing = profiles.find((profile) => profile.name.trim().toLowerCase() === normalized && String(profile.grade) === String(rawProfile.grade));
+    const cleanProfile = normalizeImportedProfile(rawProfile);
+
+    if (!existing) {
+      profiles.push(cleanProfile);
+      addedProfiles += 1;
+      return;
+    }
+
+    existing.tests = mergeById(existing.tests, cleanProfile.tests).sort((a, b) => new Date(b.date) - new Date(a.date));
+    existing.practice = mergeById(existing.practice, cleanProfile.practice).sort((a, b) => new Date(b.date) - new Date(a.date));
+    existing.worksheets = mergeById(existing.worksheets, cleanProfile.worksheets).sort((a, b) => new Date(b.date) - new Date(a.date));
+    existing.topicProgress = mergeTopicProgressObjects(existing.topicProgress, cleanProfile.topicProgress);
+    existing.learningPath = buildLearningPath(existing);
+    existing.notes = existing.notes || cleanProfile.notes || "";
+    updatedProfiles += 1;
+  });
+
+  saveProfiles(profiles);
+  return { addedProfiles, updatedProfiles, totalProfiles: profiles.length };
+}
+
+function normalizeImportedProfile(profile) {
+  const normalized = {
+    id: profile.id || crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: String(profile.name).trim(),
+    grade: String(profile.grade),
+    createdAt: profile.createdAt ?? new Date().toISOString(),
+    tests: Array.isArray(profile.tests) ? profile.tests : [],
+    practice: Array.isArray(profile.practice) ? profile.practice : [],
+    worksheets: Array.isArray(profile.worksheets) ? profile.worksheets : [],
+    topicProgress: profile.topicProgress && typeof profile.topicProgress === "object" ? profile.topicProgress : {},
+    learningPath: Array.isArray(profile.learningPath) ? profile.learningPath : [],
+    notes: profile.notes ?? "",
+  };
+  normalized.learningPath = normalized.learningPath.length ? normalized.learningPath : buildLearningPath(normalized);
+  return normalized;
+}
+
+function mergeById(existing = [], incoming = []) {
+  const rows = new Map();
+  [...existing, ...incoming].forEach((row) => {
+    if (!row) return;
+    const id = row.id ?? `${row.date ?? ""}-${row.topic ?? row.fileName ?? JSON.stringify(row).slice(0, 40)}`;
+    rows.set(id, { ...row, id });
+  });
+  return [...rows.values()];
+}
+
+function mergeTopicProgressObjects(existing = {}, incoming = {}) {
+  const merged = structuredClone(existing ?? {});
+  Object.entries(incoming ?? {}).forEach(([topic, rows]) => {
+    if (!Array.isArray(rows)) return;
+    merged[topic] = mergeById(merged[topic] ?? [], rows).sort((a, b) => new Date(a.date) - new Date(b.date));
+  });
+  return merged;
 }
 
 function mergeTopicProgress(existing, topicResults, date) {
