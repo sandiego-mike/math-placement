@@ -76,6 +76,40 @@ export function upsertProfile({ name, grade }) {
   return profile;
 }
 
+export function importStudentProfiles(students) {
+  const profiles = getProfiles();
+  let changed = false;
+
+  students.forEach((student) => {
+    const normalized = student.name.trim().toLowerCase();
+    const existing = profiles.find((profile) => profile.name.trim().toLowerCase() === normalized);
+    if (existing) {
+      if (String(existing.grade) !== String(student.grade)) {
+        existing.grade = String(student.grade);
+        changed = true;
+      }
+      return;
+    }
+
+    profiles.push({
+      id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: student.name.trim(),
+      grade: String(student.grade),
+      createdAt: new Date().toISOString(),
+      tests: [],
+      practice: [],
+      worksheets: [],
+      topicProgress: {},
+      learningPath: [],
+      notes: student.notes ?? "",
+    });
+    changed = true;
+  });
+
+  if (changed) saveProfiles(profiles);
+  return profiles;
+}
+
 export function getProfile(profileId = getActiveProfileId()) {
   return getProfiles().find((profile) => profile.id === profileId) ?? null;
 }

@@ -15,6 +15,7 @@ import {
   getProfile,
   getProfiles,
   importHistoricalReports,
+  importStudentProfiles,
   recordPractice,
   recordTest,
   recordWorksheet,
@@ -27,6 +28,13 @@ import {
 import { exportResultsPdf } from "./report.js";
 import { buildDailyWorksheet, exportWorksheetPdf } from "./worksheet.js";
 import { importedReports } from "./importedReports.js";
+
+const seededStudentProfiles = [
+  { name: "Halle Arias", grade: "5", notes: "5th grade going to 6th" },
+  { name: "Hunter Arias", grade: "11", notes: "11th grade going to 12th" },
+  { name: "Austin Arias", grade: "10", notes: "10th grade going to 11th" },
+  { name: "Hannah Arias", grade: "7", notes: "7th grade going to 8th" },
+];
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -126,6 +134,7 @@ let adminSessionActive = false;
 let openedFromAdmin = false;
 
 importHistoricalReports(importedReports);
+importStudentProfiles(seededStudentProfiles);
 refreshProfileSelect();
 
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
