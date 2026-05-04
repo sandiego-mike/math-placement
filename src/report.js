@@ -35,16 +35,17 @@ export function exportResultsPdf(session, results) {
   write(`Test difficulty fit: ${results.testDifficultyFit}`, { bold: true });
   write(`Higher-level test recommended: ${results.higherLevelRecommended ? "Yes" : "No"}`);
   write(`Next recommended test level: ${results.nextRecommendedTest}`);
+  if (results.masteredLevel) write("Mastery note: You have mastered this level. This test was below the student’s level.", { bold: true });
   write(`Difficulty level reached: ${results.difficultyReached}`, { after: 14 });
 
   write("Student-friendly placement summary", { size: 15, bold: true, after: 8 });
-  write(`${results.currentReadiness}. ${results.courseRecommendation}. Test difficulty fit: ${results.testDifficultyFit}. ${results.higherLevelRecommended ? "A higher-level test is recommended." : "This test provided usable placement information."} This is based on the overall score, topic-by-topic accuracy, graphing/math reasoning performance, SAT-style performance, and the highest difficulty reached.`);
+  write(`${results.currentReadiness}. ${results.courseRecommendation}. Test difficulty fit: ${results.testDifficultyFit}. ${results.masteredLevel ? "You have mastered this level. This test was below the student’s level." : results.higherLevelRecommended ? "A higher-level test is recommended." : "This test provided usable placement information."} This is based on the overall score, topic-by-topic accuracy, graphing/math reasoning performance, SAT-style performance, and the highest difficulty reached.`);
 
   write("Strongest skills", { size: 15, bold: true, after: 8 });
   (results.strongestSkills.length ? results.strongestSkills : ["No clear strength yet."]).forEach((topic) => write(`- ${topic}`));
 
   write("Weakest skills", { size: 15, bold: true, after: 8 });
-  (results.weakestSkills.length ? results.weakestSkills : ["No major weak areas were found on this test."]).forEach((topic) => write(`- ${topic}`));
+  (results.weakestSkills.length ? results.weakestSkills : ["No major weaknesses detected."]).forEach((topic) => write(`- ${topic}`));
 
   write("Recommended next steps", { size: 15, bold: true, after: 8 });
   results.nextSteps.forEach((step) => write(`- ${step}`));
@@ -59,8 +60,17 @@ export function exportResultsPdf(session, results) {
   write(`SAT-style question performance: ${results.satPerformance.percent}% (${results.satPerformance.correct}/${results.satPerformance.total})`);
 
   write("Recommended practice areas", { size: 15, bold: true, after: 8 });
-  const practice = results.reviewTopics.length ? results.reviewTopics : ["No practice areas were assigned because no missed or below-80% topics were found."];
+  const practice = results.masteredLevel
+    ? ["No remediation assigned. Generate advanced enrichment or start the next level test."]
+    : results.reviewTopics.length
+      ? results.reviewTopics
+      : ["No practice areas were assigned because no missed or below-80% topics were found."];
   practice.forEach((topic) => write(`- ${topic}`));
+
+  write("Daily Plan", { size: 15, bold: true, after: 8 });
+  (results.dailyPlan ?? []).forEach((day) => {
+    write(`${day.day ? `Day ${day.day}` : "Plan"}: ${day.tasks.join("; ")}`);
+  });
 
   write("Questions missed", { size: 15, bold: true, after: 8 });
   if (!results.missed.length) {

@@ -48,6 +48,7 @@ const elements = {
   questionMeta: $("#questionMeta"),
   questionTopic: $("#questionTopic"),
   questionText: $("#questionText"),
+  questionFormat: $("#questionFormat"),
   difficultyBadge: $("#difficultyBadge"),
   progressFill: $("#progressFill"),
   answerArea: $("#answerArea"),
@@ -70,6 +71,7 @@ const elements = {
   strongestSkills: $("#strongestSkills"),
   weakestSkills: $("#weakestSkills"),
   nextSteps: $("#nextSteps"),
+  dailyPlan: $("#dailyPlan"),
   graphingPerformance: $("#graphingPerformance"),
   reasoningPerformance: $("#reasoningPerformance"),
   topicResults: $("#topicResults"),
@@ -78,12 +80,15 @@ const elements = {
   practiceWeakAreas: $("#practiceWeakAreas"),
   exportPdf: $("#exportPdf"),
   newTest: $("#newTest"),
+  startNextLevel: $("#startNextLevel"),
+  startChallengeMode: $("#startChallengeMode"),
   backToDashboard: $("#backToDashboard"),
   dashboardStudent: $("#dashboardStudent"),
   dashboardScore: $("#dashboardScore"),
   dashboardPlacement: $("#dashboardPlacement"),
   dashboardNextTest: $("#dashboardNextTest"),
   dashboardCourse: $("#dashboardCourse"),
+  dashboardNextAction: $("#dashboardNextAction"),
   dashboardTestCount: $("#dashboardTestCount"),
   dashboardPracticeCount: $("#dashboardPracticeCount"),
   dashboardWorksheetCount: $("#dashboardWorksheetCount"),
@@ -101,6 +106,7 @@ const elements = {
   practiceDifficulty: $("#practiceDifficulty"),
   practiceStatus: $("#practiceStatus"),
   practiceQuestionText: $("#practiceQuestionText"),
+  practiceQuestionFormat: $("#practiceQuestionFormat"),
   practiceAnswerArea: $("#practiceAnswerArea"),
   practiceFeedback: $("#practiceFeedback"),
   submitPractice: $("#submitPractice"),
@@ -170,14 +176,7 @@ elements.adminForm.addEventListener("submit", (event) => {
 
 elements.startFromDashboard.addEventListener("click", () => {
   if (!activeProfile) return;
-  session = createSession({
-    name: activeProfile.name,
-    grade: activeProfile.grade,
-    startedAt: new Date().toISOString(),
-  });
-  saveSession(serializeSession(session));
-  showScreen("test");
-  showDiagnosticQuestion(nextDiagnosticQuestion(session));
+  startDiagnosticForProfile(activeProfile.grade);
 });
 
 elements.dashboardPractice.addEventListener("click", () => {
@@ -284,6 +283,16 @@ elements.newTest.addEventListener("click", () => {
   resetAll();
 });
 
+elements.startNextLevel.addEventListener("click", () => {
+  if (!activeProfile || !results?.nextLevelGrade) return;
+  startDiagnosticForProfile(results.nextLevelGrade);
+});
+
+elements.startChallengeMode.addEventListener("click", () => {
+  if (!activeProfile) return;
+  startDiagnosticForProfile(results?.nextLevelGrade ?? activeProfile.grade, { challengeMode: true });
+});
+
 function restartTest() {
   if (!confirm("Restart this test? This will clear the current question, score, adaptive level, missed questions, practice recommendations, and saved session.")) return;
   resetAll();
@@ -301,6 +310,18 @@ function resetAll() {
     elements.studentForm.reset();
     showScreen("start");
   }
+}
+
+function startDiagnosticForProfile(grade, options = {}) {
+  session = createSession({
+    name: activeProfile.name,
+    grade,
+    startedAt: new Date().toISOString(),
+    challengeMode: options.challengeMode,
+  });
+  saveSession(serializeSession(session));
+  showScreen("test");
+  showDiagnosticQuestion(nextDiagnosticQuestion(session));
 }
 
 function exitProfile() {
@@ -363,7 +384,7 @@ function renderAdminStudentCard(profile) {
   const latest = profile.tests[0];
   const latestScore = latest ? `${latest.score}%` : "No test yet";
   const progress = latest ? latest.placement : "Diagnostic needed";
-  const weakAreas = latest?.missedTopics?.length ? latest.missedTopics.slice(0, 3).join(", ") : "No major weak areas";
+  const weakAreas = latest?.missedTopics?.length ? latest.missedTopics.slice(0, 3).join(", ") : "No major weaknesses detected";
   return `
     <article class="review-card">
       <h4>${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</h4>
@@ -395,6 +416,7 @@ function renderDashboard() {
   elements.dashboardPlacement.textContent = latest?.placement ?? "No test yet";
   elements.dashboardNextTest.textContent = latest?.nextRecommendedTest ?? "Take first diagnostic";
   elements.dashboardCourse.textContent = latest?.courseRecommendation ?? "Diagnostic needed";
+  elements.dashboardNextAction.textContent = nextBestAction(activeProfile);
   elements.dashboardTestCount.textContent = activeProfile.tests.length;
   elements.dashboardPracticeCount.textContent = activeProfile.practice.length;
   elements.dashboardWorksheetCount.textContent = activeProfile.worksheets.length;
@@ -435,8 +457,9 @@ function renderTopicProgress(profile) {
   const entries = Object.entries(profile.topicProgress ?? {}).slice(0, 10);
   if (!entries.length) return `<div class="review-card"><p>Topic progress appears after the first test.</p></div>`;
   return entries.map(([topic, rows]) => {
+    const current = rows.at(-1)?.percent ?? 0;
     const trend = rows.map((row) => `${row.percent}%`).join(" → ");
-    return renderProgressRow(topic, rows.at(-1)?.percent ?? 0, trend);
+    return renderProgressRow(topic, current, `${masteryLevel(current)} • ${trend}`);
   }).join("");
 }
 
@@ -445,7 +468,7 @@ function renderTeacherReport(profile) {
   if (!latest) return `<p>No history yet. The report will populate after the first diagnostic.</p>`;
   const sortedTopics = [...(latest.topicResults ?? [])].sort((a, b) => b.percent - a.percent);
   const strongest = sortedTopics.slice(0, 3).map((row) => row.topic).join(", ") || "Not enough data yet";
-  const stillNeeds = sortedTopics.filter((row) => row.percent < 80).slice(-3).map((row) => row.topic).join(", ") || "No major weak areas";
+  const stillNeeds = sortedTopics.filter((row) => row.percent < 80).slice(-3).map((row) => row.topic).join(", ") || "No major weaknesses detected";
   const improving = Object.entries(profile.topicProgress ?? {})
     .filter(([, rows]) => rows.length > 1 && rows.at(-1).percent > rows[0].percent)
     .map(([topic]) => topic)
@@ -480,7 +503,9 @@ function renderWorksheetHistory(profile) {
 function showDiagnosticQuestion(question) {
   elements.questionMeta.textContent = `Question ${session.currentIndex + 1} of ${session.totalQuestions}`;
   elements.questionTopic.textContent = question.topic;
-  elements.questionText.textContent = question.prompt;
+  elements.questionText.textContent = questionTextOnly(question);
+  elements.questionFormat.textContent = answerFormatLine(question);
+  elements.questionFormat.classList.toggle("hidden", !elements.questionFormat.textContent);
   elements.difficultyBadge.textContent = DIFFICULTY_LABELS[question.difficulty];
   elements.progressFill.style.width = `${(session.currentIndex / session.totalQuestions) * 100}%`;
   elements.answerHint.textContent = "";
@@ -495,7 +520,9 @@ function showPracticeQuestion(question) {
   elements.practiceMeta.textContent =
     nextNumber <= practiceState.goal ? `Practice ${nextNumber} of ${practiceState.goal}` : `Bonus Practice ${nextNumber - practiceState.goal}`;
   elements.practiceTitle.textContent = question.topic;
-  elements.practiceQuestionText.textContent = question.prompt;
+  elements.practiceQuestionText.textContent = questionTextOnly(question);
+  elements.practiceQuestionFormat.textContent = answerFormatLine(question);
+  elements.practiceQuestionFormat.classList.toggle("hidden", !elements.practiceQuestionFormat.textContent);
   elements.practiceDifficulty.textContent = DIFFICULTY_LABELS[question.difficulty];
   renderPracticeStatus();
   elements.practiceFeedback.classList.remove("show");
@@ -643,10 +670,11 @@ function renderResults() {
   elements.satPerformance.textContent = `${results.satPerformance.percent}%`;
   elements.testDifficultyFit.textContent = results.testDifficultyFit;
   elements.nextTestLevel.textContent = results.nextRecommendedTest;
-  elements.readinessNarrative.textContent = `${results.currentReadiness}: ${results.courseRecommendation}. Test difficulty fit: ${results.testDifficultyFit}. ${results.higherLevelRecommended ? "A higher-level test is recommended." : "This test provided usable placement information."} This recommendation is based on the overall score, grade-level topic accuracy, graphing performance, SAT-style reasoning, and the difficulty level reached during the adaptive test.`;
+  elements.readinessNarrative.textContent = `${results.currentReadiness}: ${results.courseRecommendation}. Test difficulty fit: ${results.testDifficultyFit}. ${results.masteredLevel ? "You have mastered this level. This test was below the student’s level." : results.higherLevelRecommended ? "A higher-level test is recommended." : "This test provided usable placement information."} This recommendation is based on the overall score, grade-level topic accuracy, graphing performance, SAT-style reasoning, and the difficulty level reached during the adaptive test.`;
   elements.strongestSkills.innerHTML = renderList(results.strongestSkills.length ? results.strongestSkills : ["No clear strength yet"]);
-  elements.weakestSkills.innerHTML = renderList(results.weakestSkills.length ? results.weakestSkills : ["No major weak areas were found on this test."]);
+  elements.weakestSkills.innerHTML = renderList(results.weakestSkills.length ? results.weakestSkills : ["No major weaknesses detected."]);
   elements.nextSteps.innerHTML = renderList(results.nextSteps);
+  elements.dailyPlan.innerHTML = renderDailyPlan(results.dailyPlan);
   elements.graphingPerformance.textContent = `Graphing: ${results.graphingPerformance.percent}% (${results.graphingPerformance.correct}/${results.graphingPerformance.total})`;
   elements.reasoningPerformance.textContent = `SAT-style reasoning: ${results.satPerformance.percent}% (${results.satPerformance.correct}/${results.satPerformance.total})`;
 
@@ -664,9 +692,11 @@ function renderResults() {
     )
     .join("");
 
-  elements.improvementList.innerHTML = renderList(results.reviewTopics.length ? results.reviewTopics : ["No major weak areas were found on this test."]);
+  elements.improvementList.innerHTML = renderList(results.reviewTopics.length ? results.reviewTopics : ["No major weaknesses detected."]);
   elements.practiceWeakAreas.disabled = results.reviewTopics.length === 0;
   elements.practiceWeakAreas.textContent = results.reviewTopics.length ? "Practice Weak Areas" : "No Weak-Area Practice Needed";
+  elements.startNextLevel.classList.toggle("hidden", !results.masteredLevel && !results.higherLevelRecommended);
+  elements.startChallengeMode.classList.toggle("hidden", !results.challengeUnlocked);
 
   elements.missedReview.innerHTML = results.missed.length
     ? results.missed.map(renderMissedQuestion).join("")
@@ -675,6 +705,51 @@ function renderResults() {
 
 function renderList(items) {
   return items.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function renderDailyPlan(plan = []) {
+  if (!plan.length) return `<div class="review-card"><p>No daily plan yet.</p></div>`;
+  return plan.map((day) => `
+    <div class="path-item">
+      <span class="path-rank">${escapeHtml(day.day)}</span>
+      <div>
+        <strong>Day ${escapeHtml(day.day)}</strong>
+        <small>${escapeHtml(day.tasks.join(" • "))}</small>
+      </div>
+      <strong>${results?.masteredLevel ? "Advance" : "Practice"}</strong>
+    </div>
+  `).join("");
+}
+
+function questionTextOnly(question) {
+  return String(question.prompt ?? "")
+    .replace(/\s*Answer format:.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function answerFormatLine(question) {
+  if (question.type !== "fill-blank") return "";
+  return String(question.answerFormat ?? "")
+    .replace(/^\s*Answer format:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function masteryLevel(percent) {
+  if (percent >= 95) return "Mastered";
+  if (percent >= 80) return "Strong";
+  if (percent > 0) return "Learning";
+  return "Not Started";
+}
+
+function nextBestAction(profile) {
+  const latest = profile.tests[0];
+  if (!latest) return "Take first diagnostic";
+  if (latest.masteredLevel || latest.score === 100) return `Advance to next level: ${latest.nextRecommendedTest ?? "higher-level test"}`;
+  if (latest.missedTopics?.length) return `Focus on ${latest.missedTopics[0]} before advancing`;
+  if (latest.score >= 95) return "Try a challenge test or SAT-style practice";
+  return profile.learningPath[0]?.skill ?? "Continue adaptive practice";
 }
 
 function renderMissedQuestion(item, index) {

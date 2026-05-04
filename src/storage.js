@@ -104,6 +104,11 @@ export function recordTest(profileId, session, results) {
       topicResults: results.topicResults,
       graphingPerformance: results.graphingPerformance,
       satPerformance: results.satPerformance,
+      testDifficultyFit: results.testDifficultyFit,
+      masteredLevel: results.masteredLevel,
+      challengeUnlocked: results.challengeUnlocked,
+      nextLevelGrade: results.nextLevelGrade,
+      dailyPlan: results.dailyPlan,
     };
     profile.tests.unshift(testRecord);
     profile.topicProgress = mergeTopicProgress(profile.topicProgress, results.topicResults, testRecord.date);
@@ -178,6 +183,38 @@ function mergeTopicProgress(existing, topicResults, date) {
 export function buildLearningPath(profile) {
   const latest = profile.tests[0];
   const topicRows = latest?.topicResults ?? [];
+  if (latest?.masteredLevel || latest?.score === 100) {
+    const challengeSkill = Number(profile.grade) >= 10 ? "SAT Math Reasoning" : "Graphing Parabolas";
+    return [
+      {
+        priority: 1,
+        skill: `Advance to next level: ${latest.nextRecommendedTest ?? "higher-level diagnostic"}`,
+        currentAccuracy: 100,
+        targetAccuracy: 85,
+        recommendedPracticeCount: 0,
+        difficulty: "Mastered",
+        nextMilestone: "Start Next Level Test",
+      },
+      {
+        priority: 2,
+        skill: `Begin challenge problems in ${challengeSkill}`,
+        currentAccuracy: 100,
+        targetAccuracy: 85,
+        recommendedPracticeCount: 10,
+        difficulty: "Challenge",
+        nextMilestone: "Complete mixed challenge set",
+      },
+      {
+        priority: 3,
+        skill: "Prepare for SAT-style questions",
+        currentAccuracy: latest.satPerformance?.percent ?? 100,
+        targetAccuracy: 85,
+        recommendedPracticeCount: 8,
+        difficulty: "SAT prep",
+        nextMilestone: "Try timed reasoning practice",
+      },
+    ];
+  }
   const weak = topicRows.filter((row) => row.percent < 80).sort((a, b) => a.percent - b.percent);
   const practicedTopics = new Set(profile.practice.slice(0, 12).map((item) => item.topic));
   const priorityOne = weak[0]?.topic ?? latest?.missedTopics?.[0] ?? "SAT Math Reasoning";

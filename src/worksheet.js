@@ -7,6 +7,8 @@ const WORKSHEET_LENGTHS = {
   20: { label: "Full Practice", warmUp: 4, core: 12, challenge: 4 },
 };
 
+const ELEMENTARY_CHALLENGE_TOPICS = ["Ratios and Proportions", "Basic Algebra", "Graphing Basics", "Geometry Basics", "Word Problems"];
+
 export function buildDailyWorksheet(profile, options = {}) {
   const requestedLength = WORKSHEET_LENGTHS[options.length] ? options.length : 12;
   const layout = WORKSHEET_LENGTHS[requestedLength];
@@ -17,9 +19,23 @@ export function buildDailyWorksheet(profile, options = {}) {
   const recentPractice = new Set(profile.practice.slice(0, 15).map((item) => item.topic));
   const needs = [...new Set([...missedTopics, ...weakTopics])];
   const maintenance = profileTopics.primaryTopics.filter((topic) => !recentPractice.has(topic));
-  const challenge = Number(profile.grade) >= 10 ? TOPIC_GROUPS.grade11Advanced : TOPIC_GROUPS.quadraticsFunctions;
-  const enriched = !needs.length;
+  const gradeNumber = Number(profile.grade);
+  const challenge = gradeNumber >= 10 ? TOPIC_GROUPS.grade11Advanced : gradeNumber >= 8 ? TOPIC_GROUPS.quadraticsFunctions : ELEMENTARY_CHALLENGE_TOPICS;
+  const mastered = latest?.masteredLevel || latest?.score === 100;
+  const enriched = mastered || !needs.length;
   const targeted = needs.length > 0 && needs.length <= 2;
+  const nextLevelTopics = gradeNumber >= 10 ? TOPIC_GROUPS.grade11Advanced : gradeNumber >= 8 ? TOPIC_GROUPS.quadraticsFunctions : ELEMENTARY_CHALLENGE_TOPICS;
+
+  if (mastered) {
+    const nextLevelCount = Math.round(requestedLength * 0.4);
+    const challengeCount = Math.round(requestedLength * 0.4);
+    const satCount = requestedLength - nextLevelCount - challengeCount;
+    return buildWorksheetFromPlans(profile, layout, [
+      { title: "Warm-Up", count: Math.max(2, Math.min(3, nextLevelCount)), topics: nextLevelTopics, difficulty: 1 },
+      { title: "Core Practice", count: Math.max(1, nextLevelCount - Math.max(2, Math.min(3, nextLevelCount))) + challengeCount, topics: [...nextLevelTopics, ...challenge], difficulty: 2 },
+      { title: "Challenge", count: satCount, topics: TOPIC_GROUPS.sat, difficulty: 2 },
+    ], "Advanced enrichment", "Mastery advancement");
+  }
 
   const sectionPlans = [
     {
@@ -42,6 +58,10 @@ export function buildDailyWorksheet(profile, options = {}) {
     },
   ];
 
+  return buildWorksheetFromPlans(profile, layout, sectionPlans, enriched ? "Enrichment" : "Adaptive mixed review", enriched ? "Enrichment" : "Adaptive mixed review", targeted);
+}
+
+function buildWorksheetFromPlans(profile, layout, sectionPlans, difficulty, labelOverride, targeted = false) {
   const topicCounts = new Map();
   const templateCounts = new Map();
   const questions = [];
@@ -70,11 +90,11 @@ export function buildDailyWorksheet(profile, options = {}) {
     date: new Date().toISOString(),
     studentName: profile.name,
     grade: profile.grade,
-    label: layout.label,
-    length: requestedLength,
+    label: labelOverride ?? layout.label,
+    length: sectionPlans.reduce((sum, section) => sum + section.count, 0),
     sections,
     topics: [...new Set(questions.map((question) => question.topic))],
-    difficulty: enriched ? "Enrichment" : "Adaptive mixed review",
+    difficulty,
     fileName: `${profile.name.replace(/\s+/g, "-").toLowerCase()}-daily-worksheet-${new Date().toISOString().slice(0, 10)}.pdf`,
     questions,
   };

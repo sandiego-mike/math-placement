@@ -116,6 +116,7 @@
             <div class="metric"><span>Current placement</span><strong id="dashboardPlacement"></strong></div>
             <div class="metric"><span>Next test level</span><strong id="dashboardNextTest"></strong></div>
             <div class="metric"><span>Course path</span><strong id="dashboardCourse"></strong></div>
+            <div class="metric"><span>Next best action</span><strong id="dashboardNextAction"></strong></div>
             <div class="metric"><span>Tests taken</span><strong id="dashboardTestCount"></strong></div>
             <div class="metric"><span>Practice completed</span><strong id="dashboardPracticeCount"></strong></div>
             <div class="metric"><span>Worksheets</span><strong id="dashboardWorksheetCount"></strong></div>
@@ -124,6 +125,11 @@
           <section class="report-panel">
             <h3>Daily practice plan</h3>
             <div id="learningPath" class="path-list"></div>
+          </section>
+
+          <section class="report-panel">
+            <h3>Daily Plan</h3>
+            <div id="dailyPlan" class="path-list"></div>
           </section>
 
           <div class="two-column">
@@ -183,6 +189,7 @@
 
           <article class="question-panel">
             <p class="question-text" id="questionText"></p>
+            <p class="format-callout" id="questionFormat"></p>
             <div class="answer-area" id="answerArea"></div>
             <p class="hint-text" id="answerHint"></p>
           </article>
@@ -286,6 +293,8 @@
             <button class="secondary" id="exportPdf" type="button">Export PDF</button>
             <button class="secondary" id="backToDashboard" type="button">Student Dashboard</button>
             <button class="secondary hidden" type="button" data-back-admin>Back to Admin</button>
+            <button class="primary hidden" id="startNextLevel" type="button">Start Next Level Test</button>
+            <button class="secondary hidden" id="startChallengeMode" type="button">Challenge Mode</button>
             <button class="ghost" type="button" data-exit-profile>Exit Profile</button>
             <button class="primary" id="newTest" type="button">Start New Test</button>
           </div>
@@ -303,6 +312,7 @@
           <article class="question-panel">
             <div class="practice-status" id="practiceStatus"></div>
             <p class="question-text" id="practiceQuestionText"></p>
+            <p class="format-callout" id="practiceQuestionFormat"></p>
             <div class="answer-area" id="practiceAnswerArea"></div>
             <div class="feedback" id="practiceFeedback"></div>
           </article>

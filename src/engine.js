@@ -6,6 +6,9 @@ const GRADE10_TEST_LENGTH = 30;
 const GRADE11_TEST_LENGTH = 32;
 
 const clampDifficulty = (value) => Math.max(0, Math.min(2, value));
+const GRADE5_TOPICS = ["Arithmetic", "Fractions", "Decimals", "Percents", "Ratios and Proportions", "Word Problems", "Geometry Basics"];
+const GRADE6_TOPICS = [...GRADE5_TOPICS, "Basic Algebra", "Graphing Basics"];
+const GRADE7_TOPICS = [...GRADE6_TOPICS, "Negative Numbers", "Exponents", "Solving Equations"];
 
 export function createSession(student) {
   const gradeProfile = getGradeProfile(student.grade);
@@ -30,6 +33,9 @@ export function createSession(student) {
     currentQuestion: null,
     history: [],
     stats,
+    correctStreak: 0,
+    acceleration: false,
+    challengeMode: Boolean(student.challengeMode),
     difficultyReached: gradeProfile.startDifficulty,
     completedAt: null,
   };
@@ -38,9 +44,8 @@ export function createSession(student) {
 export function nextDiagnosticQuestion(session) {
   const topic = chooseNextTopic(session);
   const topicStats = session.stats[topic];
-  const recent = session.history.slice(-3);
-  const fastAdvance = (session.gradeProfile?.name === "grade8" || session.gradeProfile?.name === "grade10") && recent.length === 3 && recent.every((item) => item.correct);
-  const question = generateQuestion(topic, fastAdvance ? Math.max(topicStats.difficulty, 2) : topicStats.difficulty);
+  const difficulty = session.challengeMode || session.acceleration || (session.correctStreak ?? 0) >= 3 ? 2 : topicStats.difficulty;
+  const question = generateQuestion(topic, difficulty);
   session.currentQuestion = question;
   return question;
 }
@@ -55,10 +60,19 @@ export function submitDiagnosticAnswer(session, rawAnswer) {
   topicStats.correct += correct ? 1 : 0;
   topicStats.streak = correct ? topicStats.streak + 1 : 0;
   topicStats.missed = correct ? topicStats.missed : topicStats.missed + 1;
+  session.correctStreak = correct ? (session.correctStreak ?? 0) + 1 : 0;
 
-  if (correct && topicStats.streak >= 2) {
+  if (correct && (topicStats.streak >= 2 || session.correctStreak >= 3)) {
     topicStats.difficulty = clampDifficulty(topicStats.difficulty + 1);
     topicStats.streak = 0;
+  }
+
+  if (correct && session.correctStreak >= 5) {
+    session.acceleration = true;
+    topicStats.difficulty = 2;
+    Object.values(session.stats).forEach((stats) => {
+      if (stats.total > 0 || session.gradeProfile.primaryTopics.includes(question.topic)) stats.difficulty = Math.max(stats.difficulty, 2);
+    });
   }
 
   if (!correct) {
@@ -82,6 +96,8 @@ export function submitDiagnosticAnswer(session, rawAnswer) {
 
 function chooseNextTopic(session) {
   const profile = session.gradeProfile ?? getGradeProfile(session.student.grade);
+  const probeTopic = chooseProbeTopic(session, profile);
+  if (probeTopic) return probeTopic;
   const requiredTopic = chooseRequiredCoverageTopic(session, profile);
   if (requiredTopic) return requiredTopic;
   if (profile.name === "grade10" || profile.name === "grade8" || profile.name === "grade11") return chooseAdvancedTopic(session, profile);
@@ -99,6 +115,23 @@ function chooseNextTopic(session) {
   }
 
   return [...profile.primaryTopics].sort((a, b) => session.stats[a].total - session.stats[b].total)[0];
+}
+
+function chooseProbeTopic(session, profile) {
+  const probes = profile.probeTopics ?? [];
+  if (!probes.length || session.currentIndex >= 5) return null;
+  const unansweredProbe = probes.find((topic) => session.stats[topic]?.total === 0);
+  if (unansweredProbe) return unansweredProbe;
+  const firstFive = session.history.slice(0, 5);
+  const misses = firstFive.filter((item) => !item.correct);
+  if (firstFive.length >= 3 && misses.length >= 2) {
+    const missed = misses.at(-1);
+    return profile.prerequisiteMap[missed?.topic] ?? choose(profile.reviewTopics);
+  }
+  if (firstFive.length >= 3 && firstFive.every((item) => item.correct)) {
+    return choose(profile.challengeTopics ?? profile.primaryTopics);
+  }
+  return null;
 }
 
 function chooseRequiredCoverageTopic(session, profile) {
@@ -128,6 +161,10 @@ function chooseAdvancedTopic(session, profile) {
   const recent = session.history.slice(-5);
   const recentMisses = recent.filter((item) => !item.correct).length;
   const primaryMisses = session.history.filter((item) => !item.correct && profile.primaryTopics.includes(item.topic)).length;
+
+  if (session.challengeMode || session.acceleration || (session.correctStreak ?? 0) >= 3 || (recent.length >= 5 && recent.every((item) => item.correct))) {
+    return choose([...(profile.challengeTopics ?? []), ...TOPIC_GROUPS.sat, ...(profile.focusTopics ?? [])]);
+  }
 
   if (recent.length >= 4 && recentMisses >= 3) {
     const missed = [...recent].reverse().find((item) => !item.correct);
@@ -207,12 +244,17 @@ export function calculateResults(session) {
     satPerformance: performanceForGroup(session, TOPIC_GROUPS.sat),
     difficultyReached: DIFFICULTY_LABELS[session.difficultyReached],
     missed: session.history.filter((item) => !item.correct),
+    masteredLevel: overallPercent === 100,
+    challengeUnlocked: overallPercent === 100 || placementDetails.testDifficultyFit === "Too easy",
+    nextLevelGrade: getNextLevelGrade(session.student.grade),
+    dailyPlan: buildDailyPlan(topicResults, placementDetails.reviewTopics, session.student.grade, overallPercent),
   };
 }
 
 function buildPlacementDetails(session, profile, score, averageDifficulty, topicResults, weakTopics) {
   const missedTopics = new Set(session.history.filter((item) => !item.correct).map((item) => item.topic));
   const actualWeakRows = topicResults.filter((result) => topicNeedsReview(result, session));
+  const below80Rows = topicResults.filter((result) => result.percent < 80);
   const strongestSkills = [...topicResults]
     .filter((result) => result.total > 0)
     .sort((a, b) => b.percent - a.percent || b.correct - a.correct)
@@ -228,22 +270,21 @@ function buildPlacementDetails(session, profile, score, averageDifficulty, topic
   const higherLevelRecommended = testDifficultyFit === "Too easy" || score >= 95;
   const nextRecommendedTest = getNextRecommendedTest(profile, score);
 
-  if (score >= 95 && actualWeakRows.length === 0) {
+  if (score >= 95 && below80Rows.length === 0) {
     return {
       strongestSkills,
-      weakestSkills: ["No major weak areas were found on this test."],
-      reviewTopics: [],
+      weakestSkills: [],
+      reviewTopics: score === 100 ? [] : reviewTopics,
       placement: score === 100 ? "Above grade level" : "SAT prep ready with targeted review",
       currentReadiness: score === 100 ? "Above grade level" : "On or above grade level",
       courseRecommendation:
         score === 100
-          ? "This test was likely too easy for the student. A higher-level placement test is recommended."
+          ? "You have mastered this level. This test was below the student’s level."
           : "Strong performance. Move to a more advanced diagnostic or SAT-style challenge practice.",
       nextSteps: [
-        "Move to a more advanced diagnostic.",
-        `Try ${nextRecommendedTest}.`,
-        "Begin SAT-style challenge practice.",
-        "Continue with higher-level problem solving.",
+        score === 100 ? "Advance to next level." : "Move to a more advanced diagnostic.",
+        score === 100 ? "Begin higher-level problem solving." : `Try ${nextRecommendedTest}.`,
+        score === 100 ? "Optional: take challenge test." : "Begin SAT-style challenge practice.",
       ],
       testDifficultyFit,
       higherLevelRecommended,
@@ -405,6 +446,29 @@ function getNextRecommendedTest(profile, score) {
   return score >= 95 ? "Algebra 1 readiness, Integrated Math 1 readiness, or Integrated Math 2 readiness" : "A grade-level readiness diagnostic";
 }
 
+function getNextLevelGrade(grade) {
+  if (String(grade) === "8" || String(grade) === "9") return "10";
+  if (String(grade) === "10") return "11";
+  if (String(grade) === "11") return "12";
+  const gradeNumber = Number(grade);
+  return Number.isFinite(gradeNumber) ? String(Math.min(12, gradeNumber + 1)) : grade;
+}
+
+function buildDailyPlan(topicResults, reviewTopics, grade, score) {
+  if (score === 100 || reviewTopics.length === 0) {
+    const challengeTopics = Number(grade) >= 10 ? TOPIC_GROUPS.grade11Advanced : TOPIC_GROUPS.quadraticsFunctions;
+    return [
+      { day: 1, tasks: [`5 ${challengeTopics[0]} questions`, "3 graphing or function questions", "2 SAT-style reasoning questions"] },
+      { day: 2, tasks: ["4 mixed challenge problems", `4 ${challengeTopics[1] ?? "quadratics"} questions`, "2 non-routine word problems"] },
+    ];
+  }
+  const focus = reviewTopics.slice(0, 3);
+  return [
+    { day: 1, tasks: [`5 ${focus[0] ?? "review"} questions`, `3 ${focus[1] ?? "graphing"} questions`] },
+    { day: 2, tasks: [`4 ${focus[2] ?? "SAT-style"} problems`, "4 mixed grade-level questions"] },
+  ];
+}
+
 function weightedPercent(rows) {
   const totals = rows.reduce(
     (acc, row) => ({
@@ -510,12 +574,75 @@ export function serializeSession(session) {
 
 export function getGradeProfile(grade) {
   const gradeNumber = Number(grade);
+  if (String(grade) === "5" || gradeNumber <= 5) {
+    return {
+      name: "grade5",
+      testLength: DEFAULT_TEST_LENGTH,
+      startDifficulty: 1,
+      primaryTopics: GRADE5_TOPICS,
+      probeTopics: ["Fractions", "Decimals", "Word Problems"],
+      reviewTopics: ["Arithmetic", "Fractions", "Decimals", "Word Problems", "Geometry Basics"],
+      challengeTopics: ["Ratios and Proportions", "Percents", "Graphing Basics", "Geometry Basics"],
+      minSatQuestions: 0,
+      minGraphingQuestions: 0,
+      prerequisiteMap: {
+        Fractions: "Arithmetic",
+        Decimals: "Fractions",
+        Percents: "Fractions",
+        "Ratios and Proportions": "Fractions",
+        "Word Problems": "Arithmetic",
+        "Geometry Basics": "Arithmetic",
+      },
+    };
+  }
+
+  if (String(grade) === "6") {
+    return {
+      name: "grade6",
+      testLength: DEFAULT_TEST_LENGTH,
+      startDifficulty: 1,
+      primaryTopics: GRADE6_TOPICS,
+      probeTopics: ["Fractions", "Ratios and Proportions", "Word Problems"],
+      reviewTopics: GRADE5_TOPICS,
+      challengeTopics: ["Basic Algebra", "Graphing Basics", "Exponents"],
+      minSatQuestions: 0,
+      minGraphingQuestions: 0,
+      prerequisiteMap: {
+        "Basic Algebra": "Arithmetic",
+        "Graphing Basics": "Geometry Basics",
+        Exponents: "Arithmetic",
+      },
+    };
+  }
+
+  if (String(grade) === "7") {
+    return {
+      name: "grade7",
+      testLength: DEFAULT_TEST_LENGTH,
+      startDifficulty: 1,
+      primaryTopics: GRADE7_TOPICS,
+      probeTopics: ["Ratios and Proportions", "Basic Algebra", "Graphing Basics"],
+      reviewTopics: GRADE6_TOPICS,
+      challengeTopics: ["Solving Equations", "Exponents", "Graphing Basics"],
+      minSatQuestions: 5,
+      minGraphingQuestions: 2,
+      graphingTopics: ["Graphing Basics", "Data Interpretation"],
+      prerequisiteMap: {
+        "Negative Numbers": "Arithmetic",
+        Exponents: "Arithmetic",
+        "Solving Equations": "Basic Algebra",
+        "Graphing Basics": "Geometry Basics",
+      },
+    };
+  }
+
   if (String(grade) === "8" || String(grade) === "9") {
     return {
       name: "grade8",
       testLength: GRADE8_TEST_LENGTH,
       startDifficulty: 1,
       primaryTopics: GRADE8_TOPICS,
+      probeTopics: ["Linear Equations and Inequalities", "Graphing: Word Problem Graph", "Exponents and Radicals"],
       reviewTopics: [
         "Fractions",
         "Percents",
@@ -551,6 +678,8 @@ export function getGradeProfile(grade) {
         "SAT Math Reasoning",
         "Algebra 1 Readiness Word Problems",
       ],
+      focusTopics: ["Factoring", "Solving Quadratic Equations", "Graphing Parabolas", "Function Notation", "SAT Math Reasoning"],
+      minFocusQuestions: 5,
       minSatQuestions: 5,
       minGraphingQuestions: 5,
       prerequisiteMap: {
@@ -583,6 +712,7 @@ export function getGradeProfile(grade) {
       testLength: GRADE10_TEST_LENGTH,
       startDifficulty: 1,
       primaryTopics: GRADE10_TOPICS,
+      probeTopics: ["Systems of Equations", "Function Notation", "Graphing Parabolas"],
       reviewTopics: [
         "Fractions",
         "Percents",
@@ -653,6 +783,7 @@ export function getGradeProfile(grade) {
       testLength: GRADE11_TEST_LENGTH,
       startDifficulty: 2,
       primaryTopics: GRADE11_TOPICS,
+      probeTopics: ["Quadratic Formula", "Rational Expressions", "SAT Math Reasoning"],
       reviewTopics: [
         "Linear Equations and Inequalities",
         "Systems of Equations",
@@ -699,6 +830,7 @@ export function getGradeProfile(grade) {
     testLength: DEFAULT_TEST_LENGTH,
     startDifficulty: 1,
     primaryTopics: PREREQUISITE_TOPICS,
+    probeTopics: Number.isFinite(gradeNumber) && gradeNumber >= 7 ? ["Solving Equations", "Graphing Basics", "Exponents"] : ["Fractions", "Decimals", "Word Problems"],
     reviewTopics: PREREQUISITE_TOPICS,
     minSatQuestions: !Number.isFinite(gradeNumber) || gradeNumber >= 7 ? 5 : 0,
     prerequisiteMap: {},

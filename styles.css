@@ -258,6 +258,17 @@ select {
   line-height: 1.35;
 }
 
+.format-callout {
+  margin: 0;
+  border-left: 4px solid var(--blue);
+  border-radius: 0 8px 8px 0;
+  padding: 10px 12px;
+  color: var(--blue-dark);
+  background: var(--sky);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .answer-area {
   display: grid;
   gap: 12px;

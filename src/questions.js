@@ -183,11 +183,11 @@ export const roundedValidator = (answerValue, decimals, options = {}) => {
 
 const defaultAnswerFormat = (answerValue) =>
   Number.isInteger(answerValue)
-    ? "Answer format: Enter an integer or an equivalent fraction/decimal. Do not enter a percent unless the question asks for percent."
-    : "Answer format: Enter an exact number. Equivalent fractions or decimals are accepted. Do not enter a percent unless the question asks for percent.";
+    ? "Answer format: Enter an integer or an equivalent fraction/decimal (example: 6). Do not enter a percent unless the question asks for percent."
+    : "Answer format: Enter an exact number. Equivalent fractions or decimals are accepted (example: 1/2 or 0.5). Do not enter a percent unless the question asks for percent.";
 
-const decimalFormat = (decimals) => `Answer format: Enter a decimal rounded to the nearest ${["whole number", "tenth", "hundredth", "thousandth"][decimals] ?? `${decimals} decimal places`}.`;
-const fractionFormat = "Answer format: Enter your answer as a fraction. Leave your answer as an improper fraction if needed. Equivalent decimals are accepted only when the prompt says so.";
+const decimalFormat = (decimals) => `Answer format: Enter as a decimal rounded to the nearest ${["whole number", "tenth", "hundredth", "thousandth"][decimals] ?? `${decimals} decimal places`} (example: ${decimals === 0 ? "2" : `2.${"0".repeat(Math.max(0, decimals - 1))}3`}).`;
+const fractionFormat = "Answer format: Enter your answer as a fraction (example: 7/3). Leave your answer as an improper fraction if needed. Equivalent decimals are accepted only when the prompt says so.";
 
 const explanationFromSteps = (steps) => steps.map((step) => step.text).join(" ");
 
@@ -1494,7 +1494,7 @@ const generators = {
       answerValue: result.num / result.den,
       choices: makeFractionChoices(result),
       visual: triangleVisual("adjacent", opp, hyp),
-      answerFormat: "Answer format: Enter your answer as a fraction. Equivalent decimals are accepted.",
+      answerFormat: "Answer format: Enter your answer as a fraction (example: 5/4). Equivalent decimals are accepted.",
       steps: [{ text: `Sine is opposite over hypotenuse, so sin(A) = ${opp}/${hyp} = ${fractionText(result)}.`, value: result.num / result.den, expected: opp / hyp }],
       tip: "SOH means sine = opposite ÷ hypotenuse.",
     });
@@ -1632,7 +1632,7 @@ const generators = {
       answerValue: answer,
       validator: roundedValidator((change / start) * 100, 1),
       choiceOptions: { forceDecimal: true, decimals: 1 },
-      answerFormat: "Answer format: Enter a percent rounded to the nearest tenth. Do not include the percent sign.",
+      answerFormat: "Answer format: Enter a percent rounded to the nearest tenth without the percent sign (example: 12.5).",
       visual: barVisual(start, end),
       steps: [
         {
