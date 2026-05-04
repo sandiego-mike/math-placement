@@ -169,7 +169,7 @@ let session = null;
 let results = null;
 let practiceState = null;
 let activeProfile = null;
-let adminSessionActive = false;
+let adminSessionActive = sessionStorage.getItem("math-admin-session") === "1";
 let openedFromAdmin = false;
 
 importHistoricalReports(importedReports);
@@ -177,6 +177,11 @@ importStudentProfiles(seededStudentProfiles);
 applyAnnualGradeRollover();
 refreshProfileSelect();
 renderSupabaseStatus();
+
+if (adminSessionActive) {
+  renderAdminDashboard();
+  showScreen("admin");
+}
 
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
   month: "short",
@@ -221,6 +226,7 @@ elements.adminForm.addEventListener("submit", (event) => {
   elements.adminPassword.value = "";
   elements.adminLoginMessage.textContent = "";
   adminSessionActive = true;
+  sessionStorage.setItem("math-admin-session", "1");
   openedFromAdmin = false;
   renderAdminDashboard();
   showScreen("admin");
@@ -350,6 +356,7 @@ elements.practiceDashboard.addEventListener("click", () => {
 });
 elements.adminLogout.addEventListener("click", () => {
   adminSessionActive = false;
+  sessionStorage.removeItem("math-admin-session");
   openedFromAdmin = false;
   showScreen("start");
 });
