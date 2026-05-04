@@ -357,6 +357,8 @@ export function importProfilesData(payload) {
     existing.learningPath = buildLearningPath(existing);
     existing.notes = existing.notes || cleanProfile.notes || "";
     existing.aliases = mergeAliases(existing.aliases, cleanProfile.aliases);
+    if (cleanProfile.avatar) existing.avatar = cleanProfile.avatar;
+    if (cleanProfile.leaderboardVisible === false) existing.leaderboardVisible = false;
     updatedProfiles += 1;
   });
 
@@ -379,6 +381,8 @@ function normalizeImportedProfile(profile) {
     aliases: mergeAliases([], profile.aliases),
     lastGradeRolloverYear: profile.lastGradeRolloverYear ?? null,
     gradeHistory: Array.isArray(profile.gradeHistory) ? profile.gradeHistory : [],
+    avatar: profile.avatar ?? null,
+    leaderboardVisible: profile.leaderboardVisible ?? true,
   };
   normalized.learningPath = normalized.learningPath.length ? normalized.learningPath : buildLearningPath(normalized);
   return normalized;

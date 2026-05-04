@@ -290,14 +290,30 @@ elements.dashboardPractice.addEventListener("click", () => {
 
 elements.createWorksheet.addEventListener("click", async () => {
   if (!activeProfile) return;
-  const worksheet = buildDailyWorksheet(activeProfile, {
-    length: Number(elements.worksheetLength.value),
-  });
-  await exportWorksheetPdf(worksheet);
-  activeProfile = recordWorksheet(activeProfile.id, worksheet);
-  queueProfileSync(activeProfile);
-  renderLeaderboard();
-  renderDashboard();
+  const btn = elements.createWorksheet;
+  btn.disabled = true;
+  try {
+    const worksheet = buildDailyWorksheet(activeProfile, {
+      length: Number(elements.worksheetLength.value),
+    });
+    // Record the worksheet first so it's saved regardless of PDF outcome
+    activeProfile = recordWorksheet(activeProfile.id, worksheet);
+    queueProfileSync(activeProfile);
+    renderLeaderboard();
+    renderDashboard();
+    // Then attempt PDF — failure here is non-fatal
+    try {
+      await exportWorksheetPdf(worksheet);
+    } catch (pdfErr) {
+      console.error("PDF generation failed:", pdfErr);
+      alert("Worksheet saved to your history, but the PDF could not be generated. Try again or use a different browser.");
+    }
+  } catch (err) {
+    console.error("Worksheet creation failed:", err);
+    alert("Could not create the worksheet. Please try again.");
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 elements.exportMyResults.addEventListener("click", () => {
