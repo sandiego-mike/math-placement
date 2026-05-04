@@ -62,6 +62,7 @@ export function buildDailyWorksheet(profile, options = {}) {
 }
 
 function buildWorksheetFromPlans(profile, layout, sectionPlans, difficulty, labelOverride, targeted = false) {
+  const profileTopics = getGradeProfile(profile.grade);
   const topicCounts = new Map();
   const templateCounts = new Map();
   const questions = [];
