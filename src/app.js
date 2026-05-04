@@ -167,6 +167,7 @@ const elements = {
   backToAdminButtons: document.querySelectorAll("[data-back-admin]"),
   leaderboardSection: $("#leaderboardSection"),
   leaderboardGrid: $("#leaderboardGrid"),
+  dashboardAvatar: $("#dashboardAvatar"),
 };
 
 let session = null;
@@ -186,6 +187,16 @@ renderLeaderboard();
 if (adminSessionActive) {
   renderAdminDashboard();
   showScreen("admin");
+} else {
+  const savedProfileId = sessionStorage.getItem("math-student-profile");
+  if (savedProfileId) {
+    const savedProfile = getProfile(savedProfileId);
+    if (savedProfile) {
+      activeProfile = savedProfile;
+      renderDashboard();
+      showScreen("dashboard");
+    }
+  }
 }
 
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
@@ -538,6 +549,11 @@ function showScreen(name) {
   screens[name].classList.add("active");
   updateAdminReturnButtons();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  if (name === "dashboard" && activeProfile) {
+    sessionStorage.setItem("math-student-profile", activeProfile.id);
+  } else if (name === "start") {
+    sessionStorage.removeItem("math-student-profile");
+  }
 }
 
 function updateAdminReturnButtons() {
@@ -601,6 +617,7 @@ function renderDashboard() {
   if (!openedFromAdmin) activeProfile = touchProfile(activeProfile.id, "Viewing dashboard") ?? activeProfile;
   const latest = activeProfile.tests[0];
   elements.dashboardStudent.textContent = `${activeProfile.name}, Grade ${activeProfile.grade}`;
+  elements.dashboardAvatar.innerHTML = avatarDisplay(activeProfile.avatar, 72);
   elements.dashboardScore.textContent = latest ? `${latest.score}%` : "--";
   elements.dashboardPlacement.textContent = latest?.placement ?? "No test yet";
   elements.dashboardNextTest.textContent = latest?.nextRecommendedTest ?? "Take first diagnostic";
