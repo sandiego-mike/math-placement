@@ -67,6 +67,7 @@ export function upsertProfile({ name, grade }) {
       learningPath: [],
       lastActiveAt: new Date().toISOString(),
       activityStatus: "Profile created",
+      lastGradeRolloverYear: null,
     };
     profiles.push(profile);
   } else {
@@ -105,6 +106,7 @@ export function importStudentProfiles(students) {
       learningPath: [],
       lastActiveAt: new Date().toISOString(),
       activityStatus: "Profile created",
+      lastGradeRolloverYear: null,
       notes: student.notes ?? "",
     });
     changed = true;
@@ -112,6 +114,56 @@ export function importStudentProfiles(students) {
 
   if (changed) saveProfiles(profiles);
   return profiles;
+}
+
+export function applyAnnualGradeRollover(currentDate = new Date()) {
+  const month = currentDate.getMonth();
+  const rolloverYear = currentDate.getFullYear();
+  if (month < 6) return { changed: false, updatedProfiles: 0 };
+
+  const cutoff = new Date(rolloverYear, 6, 1);
+  const profiles = getProfiles();
+  let updatedProfiles = 0;
+
+  profiles.forEach((profile) => {
+    if (profile.lastGradeRolloverYear === rolloverYear) return;
+    const createdAt = profile.createdAt ? new Date(profile.createdAt) : null;
+    const createdBeforeRollover = !createdAt || Number.isNaN(createdAt.getTime()) || createdAt < cutoff;
+    const seededGoingToNextGrade = /going to/i.test(profile.notes ?? "");
+    if (!createdBeforeRollover && !seededGoingToNextGrade) return;
+
+    const nextGrade = nextAnnualGrade(profile.grade);
+    if (nextGrade === String(profile.grade)) {
+      profile.lastGradeRolloverYear = rolloverYear;
+      return;
+    }
+
+    profile.gradeHistory = profile.gradeHistory ?? [];
+    profile.gradeHistory.push({
+      from: String(profile.grade),
+      to: nextGrade,
+      date: currentDate.toISOString(),
+      reason: "Annual grade rollover after June",
+    });
+    profile.grade = nextGrade;
+    profile.lastGradeRolloverYear = rolloverYear;
+    profile.activityStatus = `Advanced to grade ${nextGrade}`;
+    profile.lastActiveAt = currentDate.toISOString();
+    profile.learningPath = buildLearningPath(profile);
+    updatedProfiles += 1;
+  });
+
+  if (updatedProfiles) saveProfiles(profiles);
+  return { changed: updatedProfiles > 0, updatedProfiles };
+}
+
+export function nextAnnualGrade(grade) {
+  const gradeText = String(grade);
+  const gradeNumber = Number(gradeText);
+  if (!Number.isFinite(gradeNumber)) return gradeText;
+  if (gradeNumber >= 12) return "College";
+  if (gradeNumber < 1) return gradeText;
+  return String(gradeNumber + 1);
 }
 
 export function getProfile(profileId = getActiveProfileId()) {
@@ -281,6 +333,8 @@ function normalizeImportedProfile(profile) {
     topicProgress: profile.topicProgress && typeof profile.topicProgress === "object" ? profile.topicProgress : {},
     learningPath: Array.isArray(profile.learningPath) ? profile.learningPath : [],
     notes: profile.notes ?? "",
+    lastGradeRolloverYear: profile.lastGradeRolloverYear ?? null,
+    gradeHistory: Array.isArray(profile.gradeHistory) ? profile.gradeHistory : [],
   };
   normalized.learningPath = normalized.learningPath.length ? normalized.learningPath : buildLearningPath(normalized);
   return normalized;

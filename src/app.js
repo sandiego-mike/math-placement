@@ -10,6 +10,7 @@ import {
 } from "./engine.js";
 import { DIFFICULTY_LABELS } from "./questions.js";
 import {
+  applyAnnualGradeRollover,
   clearActiveProfileId,
   clearSession,
   exportProfilesData,
@@ -142,6 +143,7 @@ let openedFromAdmin = false;
 
 importHistoricalReports(importedReports);
 importStudentProfiles(seededStudentProfiles);
+applyAnnualGradeRollover();
 refreshProfileSelect();
 
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {

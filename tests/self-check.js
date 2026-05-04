@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { calculateResults, createSession, nextDiagnosticQuestion, submitDiagnosticAnswer } from "../src/engine.js";
 import { TOPICS, generateQuestion, parseStudentNumber } from "../src/questions.js";
+import { nextAnnualGrade } from "../src/storage.js";
 
 const closeTo = (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 0.001;
 
@@ -77,6 +78,10 @@ assert.ok(totalFillBlank > 0, "the engine generates fill-in questions");
 assert.equal(parseStudentNumber("1/2"), 0.5, "fraction parsing works");
 assert.equal(parseStudentNumber("0.5"), 0.5, "decimal parsing works");
 assert.equal(parseStudentNumber("50%"), 0.5, "percent parsing works");
+assert.equal(nextAnnualGrade("5"), "6", "annual rollover moves grade 5 to grade 6");
+assert.equal(nextAnnualGrade("11"), "12", "annual rollover moves grade 11 to grade 12");
+assert.equal(nextAnnualGrade("12"), "College", "annual rollover moves grade 12 to college");
+assert.equal(nextAnnualGrade("Adult learner"), "Adult learner", "annual rollover leaves adult learners unchanged");
 
 for (const grade of ["8", "10", "11"]) {
   const session = createSession({ name: "Probe Test", grade });
