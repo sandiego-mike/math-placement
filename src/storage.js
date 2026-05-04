@@ -53,7 +53,7 @@ export function clearActiveProfileId() {
 export function upsertProfile({ name, grade }) {
   const profiles = getProfiles();
   const normalized = name.trim().toLowerCase();
-  let profile = profiles.find((item) => item.name.trim().toLowerCase() === normalized && String(item.grade) === String(grade));
+  let profile = profiles.find((item) => item.name.trim().toLowerCase() === normalized);
   if (!profile) {
     profile = {
       id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -73,6 +73,8 @@ export function upsertProfile({ name, grade }) {
   } else {
     profile.name = name.trim();
     profile.grade = grade;
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = "Opened dashboard";
   }
   saveProfiles(profiles);
   setActiveProfileId(profile.id);
@@ -193,6 +195,7 @@ export function recordTest(profileId, session, results) {
     const testRecord = {
       id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       date: session.completedAt ?? new Date().toISOString(),
+      type: session.miniTest ? "Daily Mini Test" : "Placement Test",
       score: results.overallPercent,
       placement: results.placement,
       currentReadiness: results.currentReadiness,
@@ -212,7 +215,7 @@ export function recordTest(profileId, session, results) {
     profile.topicProgress = mergeTopicProgress(profile.topicProgress, results.topicResults, testRecord.date);
     profile.learningPath = buildLearningPath(profile);
     profile.lastActiveAt = new Date().toISOString();
-    profile.activityStatus = "Completed a test";
+    profile.activityStatus = session.miniTest ? "Completed a daily mini test" : "Completed a test";
     return profile;
   });
 }

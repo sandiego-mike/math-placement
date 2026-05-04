@@ -38,6 +38,22 @@ const seededStudentProfiles = [
   { name: "Hunter Arias", grade: "11", notes: "11th grade going to 12th" },
   { name: "Austin Arias", grade: "10", notes: "10th grade going to 11th" },
   { name: "Hannah Arias", grade: "7", notes: "7th grade going to 8th" },
+  { name: "Bella Arias", grade: "5", notes: "5th grade" },
+  { name: "Greyson Arias", grade: "7", notes: "7th grade" },
+];
+
+const playfulBoys = new Set(["liam devries", "austin arias", "greyson arias", "hunter arias"]);
+const correctCheers = [
+  "Brilliant work. That was sharp, confident, and exactly right.",
+  "Excellent job. Your brain is absolutely cooking on that one.",
+  "Beautiful thinking. Keep stacking wins like that.",
+  "That is top-tier math work. Keep going.",
+];
+const playfulMisses = [
+  "Nope, my guy. Shake it off and get the next one right, foo.",
+  "Close, but not today. Lock in and make the next one yours, foo.",
+  "That one slipped away. Reset, breathe, and prove it on the next one.",
+  "Not quite, champ. Read it twice next time and go win the next round.",
 ];
 
 const $ = (selector) => document.querySelector(selector);
@@ -111,6 +127,7 @@ const elements = {
   teacherReport: $("#teacherReport"),
   worksheetHistory: $("#worksheetHistory"),
   startFromDashboard: $("#startFromDashboard"),
+  startMiniTest: $("#startMiniTest"),
   dashboardPractice: $("#dashboardPractice"),
   worksheetLength: $("#worksheetLength"),
   createWorksheet: $("#createWorksheet"),
@@ -198,6 +215,11 @@ elements.startFromDashboard.addEventListener("click", () => {
   startDiagnosticForProfile(activeProfile.grade);
 });
 
+elements.startMiniTest.addEventListener("click", () => {
+  if (!activeProfile) return;
+  startDiagnosticForProfile(activeProfile.grade, { miniTest: true });
+});
+
 elements.dashboardPractice.addEventListener("click", () => {
   if (!activeProfile?.tests.length) return;
   activeProfile = touchProfile(activeProfile.id, "Started practice") ?? activeProfile;
@@ -235,7 +257,9 @@ elements.submitAnswer.addEventListener("click", () => {
   saveSession(serializeSession(session));
   if (activeProfile) activeProfile = touchProfile(activeProfile.id, "Taking a test") ?? activeProfile;
   lockAnswerArea(elements.answerArea);
-  elements.answerHint.textContent = outcome.correct ? "Correct. Nice work." : `Correct answer: ${session.history.at(-1).answer}`;
+  elements.answerHint.textContent = outcome.correct
+    ? studentCorrectMessage()
+    : `${studentMissMessage()} Correct answer: ${session.history.at(-1).answer}`;
   elements.answerHint.style.color = outcome.correct ? "var(--green)" : "var(--red)";
   elements.submitAnswer.classList.add("hidden");
   elements.nextQuestion.classList.remove("hidden");
@@ -275,7 +299,7 @@ elements.submitPractice.addEventListener("click", () => {
   lockAnswerArea(elements.practiceAnswerArea);
   renderPracticeStatus();
   elements.practiceFeedback.innerHTML = `
-    <p><span class="answer-mark ${attempt.correct ? "right" : "wrong"}">${attempt.correct ? "Correct" : "Needs practice"}</span></p>
+    <p><span class="answer-mark ${attempt.correct ? "right" : "wrong"}">${escapeHtml(attempt.correct ? studentCorrectMessage() : studentMissMessage())}</span></p>
     <p><strong>${escapeHtml(practiceCoachMessage(attempt))}</strong></p>
     <p><strong>Correct answer:</strong> ${escapeHtml(attempt.answer)}</p>
     <p>${escapeHtml(attempt.explanation)}</p>
@@ -362,13 +386,19 @@ function resetAll() {
 }
 
 function startDiagnosticForProfile(grade, options = {}) {
-  activeProfile = touchProfile(activeProfile.id, options.challengeMode ? "Started challenge mode" : "Started a test") ?? activeProfile;
+  const status = options.challengeMode ? "Started challenge mode" : options.miniTest ? "Started a daily mini test" : "Started a test";
+  activeProfile = touchProfile(activeProfile.id, status) ?? activeProfile;
   session = createSession({
     name: activeProfile.name,
     grade,
     startedAt: new Date().toISOString(),
     challengeMode: options.challengeMode,
+    miniTest: options.miniTest,
   });
+  if (options.miniTest) {
+    session.totalQuestions = 8;
+    session.miniTest = true;
+  }
   saveSession(serializeSession(session));
   showScreen("test");
   showDiagnosticQuestion(nextDiagnosticQuestion(session));
@@ -477,7 +507,7 @@ function renderDashboard() {
   elements.dashboardPractice.disabled = !latest;
   elements.learningPath.innerHTML = (activeProfile.learningPath.length ? activeProfile.learningPath : seedLearningPath()).map(renderPathItem).join("");
   elements.scoreHistory.innerHTML = activeProfile.tests.length
-    ? activeProfile.tests.slice(0, 8).map((test) => renderProgressRow(new Date(test.date).toLocaleDateString(), test.score, test.placement)).join("")
+    ? activeProfile.tests.slice(0, 8).map((test) => renderProgressRow(new Date(test.date).toLocaleDateString(), test.score, `${test.type ?? "Placement Test"} • ${test.placement}`)).join("")
     : `<div class="review-card"><p>No tests yet. Start a diagnostic to build history.</p></div>`;
   elements.topicProgressDashboard.innerHTML = renderTopicProgress(activeProfile);
   elements.teacherReport.innerHTML = renderTeacherReport(activeProfile);
@@ -714,7 +744,7 @@ function lockAnswerArea(container) {
 function renderResults() {
   elements.studentSummary.textContent = `${session.student.name}, Grade ${session.student.grade} • Completed ${new Date(
     session.completedAt,
-  ).toLocaleDateString()}`;
+  ).toLocaleDateString()}${session.miniTest ? " • Daily Mini Test" : ""}`;
   elements.overallScore.textContent = `${results.overallPercent}%`;
   elements.placementLevel.textContent = results.placement;
   elements.currentReadiness.textContent = results.currentReadiness;
@@ -804,6 +834,20 @@ function nextBestAction(profile) {
   if (latest.missedTopics?.length) return `Focus on ${latest.missedTopics[0]} before advancing`;
   if (latest.score >= 95) return "Try a challenge test or SAT-style practice";
   return profile.learningPath[0]?.skill ?? "Continue adaptive practice";
+}
+
+function studentCorrectMessage() {
+  return chooseMessage(correctCheers);
+}
+
+function studentMissMessage() {
+  const normalized = activeProfile?.name?.trim().toLowerCase() ?? "";
+  if (playfulBoys.has(normalized)) return chooseMessage(playfulMisses);
+  return "Not quite yet. Review the answer, then try to win the next one.";
+}
+
+function chooseMessage(messages) {
+  return messages[Math.floor(Math.random() * messages.length)];
 }
 
 function renderMissedQuestion(item, index) {
