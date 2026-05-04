@@ -199,8 +199,7 @@ if (adminSessionActive) {
   }
 }
 
-// Auto-pull from Supabase on load so cross-device changes (avatars, new results) appear automatically
-(async () => {
+async function syncFromCloud() {
   if (!getSupabaseConfig().enabled) return;
   try {
     const profiles = await pullProfilesFromSupabase();
@@ -217,7 +216,14 @@ if (adminSessionActive) {
   } catch {
     // silent — no internet or Supabase down shouldn't break the app
   }
-})();
+}
+
+// Pull on load, every 30 s, and when the tab regains focus (covers mobile app-switching)
+syncFromCloud();
+setInterval(syncFromCloud, 30000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncFromCloud();
+});
 
 elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
   month: "short",
