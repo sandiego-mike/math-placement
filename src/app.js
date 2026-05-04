@@ -1,0 +1,774 @@
+import {
+  calculateResults,
+  createPracticeState,
+  createSession,
+  nextDiagnosticQuestion,
+  nextPracticeQuestion,
+  serializeSession,
+  submitDiagnosticAnswer,
+  submitPracticeAnswer,
+} from "./engine.js";
+import { DIFFICULTY_LABELS } from "./questions.js";
+import {
+  clearActiveProfileId,
+  clearSession,
+  getProfile,
+  getProfiles,
+  importHistoricalReports,
+  recordPractice,
+  recordTest,
+  recordWorksheet,
+  resetWorksheetHistory,
+  scoreWorksheet,
+  saveSession,
+  setActiveProfileId,
+  upsertProfile,
+} from "./storage.js";
+import { exportResultsPdf } from "./report.js";
+import { buildDailyWorksheet, exportWorksheetPdf } from "./worksheet.js";
+import { importedReports } from "./importedReports.js";
+
+const $ = (selector) => document.querySelector(selector);
+
+const elements = {
+  sessionDate: $("#sessionDate"),
+  studentForm: $("#studentForm"),
+  profileSelect: $("#profileSelect"),
+  studentName: $("#studentName"),
+  gradeLevel: $("#gradeLevel"),
+  adminForm: $("#adminForm"),
+  adminPassword: $("#adminPassword"),
+  adminLoginMessage: $("#adminLoginMessage"),
+  startScreen: $("#startScreen"),
+  adminScreen: $("#adminScreen"),
+  dashboardScreen: $("#dashboardScreen"),
+  testScreen: $("#testScreen"),
+  resultsScreen: $("#resultsScreen"),
+  practiceScreen: $("#practiceScreen"),
+  questionMeta: $("#questionMeta"),
+  questionTopic: $("#questionTopic"),
+  questionText: $("#questionText"),
+  difficultyBadge: $("#difficultyBadge"),
+  progressFill: $("#progressFill"),
+  answerArea: $("#answerArea"),
+  answerHint: $("#answerHint"),
+  submitAnswer: $("#submitAnswer"),
+  nextQuestion: $("#nextQuestion"),
+  restartTest: $("#restartTest"),
+  restartTestTop: $("#restartTestTop"),
+  studentSummary: $("#studentSummary"),
+  overallScore: $("#overallScore"),
+  placementLevel: $("#placementLevel"),
+  currentReadiness: $("#currentReadiness"),
+  difficultyReached: $("#difficultyReached"),
+  practiceFocus: $("#practiceFocus"),
+  coursePlacement: $("#coursePlacement"),
+  satPerformance: $("#satPerformance"),
+  testDifficultyFit: $("#testDifficultyFit"),
+  nextTestLevel: $("#nextTestLevel"),
+  readinessNarrative: $("#readinessNarrative"),
+  strongestSkills: $("#strongestSkills"),
+  weakestSkills: $("#weakestSkills"),
+  nextSteps: $("#nextSteps"),
+  graphingPerformance: $("#graphingPerformance"),
+  reasoningPerformance: $("#reasoningPerformance"),
+  topicResults: $("#topicResults"),
+  improvementList: $("#improvementList"),
+  missedReview: $("#missedReview"),
+  practiceWeakAreas: $("#practiceWeakAreas"),
+  exportPdf: $("#exportPdf"),
+  newTest: $("#newTest"),
+  backToDashboard: $("#backToDashboard"),
+  dashboardStudent: $("#dashboardStudent"),
+  dashboardScore: $("#dashboardScore"),
+  dashboardPlacement: $("#dashboardPlacement"),
+  dashboardNextTest: $("#dashboardNextTest"),
+  dashboardCourse: $("#dashboardCourse"),
+  dashboardTestCount: $("#dashboardTestCount"),
+  dashboardPracticeCount: $("#dashboardPracticeCount"),
+  dashboardWorksheetCount: $("#dashboardWorksheetCount"),
+  learningPath: $("#learningPath"),
+  scoreHistory: $("#scoreHistory"),
+  topicProgressDashboard: $("#topicProgressDashboard"),
+  teacherReport: $("#teacherReport"),
+  worksheetHistory: $("#worksheetHistory"),
+  startFromDashboard: $("#startFromDashboard"),
+  dashboardPractice: $("#dashboardPractice"),
+  worksheetLength: $("#worksheetLength"),
+  createWorksheet: $("#createWorksheet"),
+  practiceMeta: $("#practiceMeta"),
+  practiceTitle: $("#practiceTitle"),
+  practiceDifficulty: $("#practiceDifficulty"),
+  practiceStatus: $("#practiceStatus"),
+  practiceQuestionText: $("#practiceQuestionText"),
+  practiceAnswerArea: $("#practiceAnswerArea"),
+  practiceFeedback: $("#practiceFeedback"),
+  submitPractice: $("#submitPractice"),
+  nextPractice: $("#nextPractice"),
+  backToResults: $("#backToResults"),
+  practiceDashboard: $("#practiceDashboard"),
+  adminStudents: $("#adminStudents"),
+  adminLogout: $("#adminLogout"),
+  backToAdminButtons: document.querySelectorAll("[data-back-admin]"),
+};
+
+let session = null;
+let results = null;
+let practiceState = null;
+let activeProfile = null;
+let adminSessionActive = false;
+let openedFromAdmin = false;
+
+importHistoricalReports(importedReports);
+refreshProfileSelect();
+
+elements.sessionDate.textContent = new Date().toLocaleDateString(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+elements.studentForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(elements.studentForm);
+  const selectedProfileId = data.get("profileSelect");
+  activeProfile = selectedProfileId
+    ? getProfile(selectedProfileId)
+    : upsertProfile({
+        name: data.get("studentName").trim(),
+        grade: data.get("gradeLevel"),
+      });
+  if (!activeProfile) return;
+  if (selectedProfileId) setActiveProfileId(activeProfile.id);
+  openedFromAdmin = false;
+  elements.studentName.value = activeProfile.name;
+  elements.gradeLevel.value = activeProfile.grade;
+  renderDashboard();
+  showScreen("dashboard");
+});
+
+elements.profileSelect.addEventListener("change", () => {
+  const profile = getProfile(elements.profileSelect.value);
+  if (!profile) return;
+  elements.studentName.value = profile.name;
+  elements.gradeLevel.value = profile.grade;
+});
+
+elements.adminForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (elements.adminPassword.value !== "1234#") {
+    elements.adminLoginMessage.textContent = "That password did not match.";
+    return;
+  }
+  elements.adminPassword.value = "";
+  elements.adminLoginMessage.textContent = "";
+  adminSessionActive = true;
+  openedFromAdmin = false;
+  renderAdminDashboard();
+  showScreen("admin");
+});
+
+elements.startFromDashboard.addEventListener("click", () => {
+  if (!activeProfile) return;
+  session = createSession({
+    name: activeProfile.name,
+    grade: activeProfile.grade,
+    startedAt: new Date().toISOString(),
+  });
+  saveSession(serializeSession(session));
+  showScreen("test");
+  showDiagnosticQuestion(nextDiagnosticQuestion(session));
+});
+
+elements.dashboardPractice.addEventListener("click", () => {
+  if (!activeProfile?.tests.length) return;
+  results = resultsFromProfileTest(activeProfile.tests[0]);
+  practiceState = createPracticeState(results);
+  showScreen("practice");
+  showPracticeQuestion(nextPracticeQuestion(practiceState));
+});
+
+elements.createWorksheet.addEventListener("click", async () => {
+  if (!activeProfile) return;
+  const worksheet = buildDailyWorksheet(activeProfile, {
+    length: Number(elements.worksheetLength.value),
+  });
+  await exportWorksheetPdf(worksheet);
+  activeProfile = recordWorksheet(activeProfile.id, worksheet);
+  renderDashboard();
+});
+
+elements.submitAnswer.addEventListener("click", () => {
+  const answer = getAnswer(elements.answerArea, session.currentQuestion.type);
+  if (!answer) {
+    elements.answerHint.textContent = "Choose or enter an answer before submitting.";
+    return;
+  }
+
+  const outcome = submitDiagnosticAnswer(session, answer);
+  saveSession(serializeSession(session));
+  lockAnswerArea(elements.answerArea);
+  elements.answerHint.textContent = outcome.correct ? "Correct. Nice work." : `Correct answer: ${session.history.at(-1).answer}`;
+  elements.answerHint.style.color = outcome.correct ? "var(--green)" : "var(--red)";
+  elements.submitAnswer.classList.add("hidden");
+  elements.nextQuestion.classList.remove("hidden");
+  elements.nextQuestion.textContent = outcome.completed ? "Review Results" : "Next";
+});
+
+elements.nextQuestion.addEventListener("click", () => {
+  if (session.completedAt) {
+    results = calculateResults(session);
+    if (activeProfile) activeProfile = recordTest(activeProfile.id, session, results);
+    renderResults();
+    showScreen("results");
+    return;
+  }
+  showDiagnosticQuestion(nextDiagnosticQuestion(session));
+});
+
+elements.restartTest.addEventListener("click", () => restartTest());
+elements.restartTestTop.addEventListener("click", () => restartTest());
+
+elements.practiceWeakAreas.addEventListener("click", () => {
+  practiceState = createPracticeState(results);
+  showScreen("practice");
+  showPracticeQuestion(nextPracticeQuestion(practiceState));
+});
+
+elements.submitPractice.addEventListener("click", () => {
+  const answer = getAnswer(elements.practiceAnswerArea, practiceState.currentQuestion.type);
+  if (!answer) {
+    elements.practiceFeedback.textContent = "Try an answer first, then check it.";
+    elements.practiceFeedback.classList.add("show");
+    return;
+  }
+
+  const attempt = submitPracticeAnswer(practiceState, answer);
+  if (activeProfile) activeProfile = recordPractice(activeProfile.id, attempt);
+  lockAnswerArea(elements.practiceAnswerArea);
+  renderPracticeStatus();
+  elements.practiceFeedback.innerHTML = `
+    <p><span class="answer-mark ${attempt.correct ? "right" : "wrong"}">${attempt.correct ? "Correct" : "Needs practice"}</span></p>
+    <p><strong>${escapeHtml(practiceCoachMessage(attempt))}</strong></p>
+    <p><strong>Correct answer:</strong> ${escapeHtml(attempt.answer)}</p>
+    <p>${escapeHtml(attempt.explanation)}</p>
+    <p><strong>Remember this:</strong> ${escapeHtml(attempt.tip)}</p>
+  `;
+  elements.practiceFeedback.classList.add("show");
+  elements.submitPractice.classList.add("hidden");
+  elements.nextPractice.classList.remove("hidden");
+  elements.nextPractice.textContent = practiceState.attempts.length >= practiceState.goal ? "Keep Going" : "Next Practice";
+});
+
+elements.nextPractice.addEventListener("click", () => {
+  showPracticeQuestion(nextPracticeQuestion(practiceState));
+});
+
+elements.backToResults.addEventListener("click", () => showScreen(results ? "results" : "dashboard"));
+elements.practiceDashboard.addEventListener("click", () => {
+  renderDashboard();
+  showScreen("dashboard");
+});
+elements.adminLogout.addEventListener("click", () => {
+  adminSessionActive = false;
+  openedFromAdmin = false;
+  showScreen("start");
+});
+elements.backToDashboard.addEventListener("click", () => {
+  renderDashboard();
+  showScreen("dashboard");
+});
+elements.exportPdf.addEventListener("click", () => exportResultsPdf(session, results));
+elements.newTest.addEventListener("click", () => {
+  if (!confirm("Start over? This will clear the current score, missed questions, adaptive level, practice recommendations, and saved session.")) return;
+  resetAll();
+});
+
+function restartTest() {
+  if (!confirm("Restart this test? This will clear the current question, score, adaptive level, missed questions, practice recommendations, and saved session.")) return;
+  resetAll();
+}
+
+function resetAll() {
+  clearSession();
+  session = null;
+  results = null;
+  practiceState = null;
+  if (activeProfile) {
+    renderDashboard();
+    showScreen("dashboard");
+  } else {
+    elements.studentForm.reset();
+    showScreen("start");
+  }
+}
+
+function exitProfile() {
+  clearSession();
+  clearActiveProfileId();
+  session = null;
+  results = null;
+  practiceState = null;
+  activeProfile = null;
+  openedFromAdmin = false;
+  elements.studentForm.reset();
+  elements.answerHint.textContent = "";
+  elements.practiceFeedback.textContent = "";
+  elements.practiceFeedback.classList.remove("show");
+  refreshProfileSelect();
+  showScreen("start");
+}
+
+function backToAdmin() {
+  if (!adminSessionActive) return;
+  clearSession();
+  session = null;
+  results = null;
+  practiceState = null;
+  activeProfile = null;
+  openedFromAdmin = false;
+  renderAdminDashboard();
+  showScreen("admin");
+}
+
+function showScreen(name) {
+  const screens = {
+    start: elements.startScreen,
+    admin: elements.adminScreen,
+    dashboard: elements.dashboardScreen,
+    test: elements.testScreen,
+    results: elements.resultsScreen,
+    practice: elements.practiceScreen,
+  };
+  Object.values(screens).forEach((screen) => screen.classList.remove("active"));
+  screens[name].classList.add("active");
+  updateAdminReturnButtons();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateAdminReturnButtons() {
+  elements.backToAdminButtons.forEach((button) => {
+    button.classList.toggle("hidden", !openedFromAdmin);
+  });
+}
+
+function renderAdminDashboard() {
+  const profiles = getProfiles();
+  elements.adminStudents.innerHTML = profiles.length
+    ? profiles.map(renderAdminStudentCard).join("")
+    : `<div class="review-card"><p>No student profiles yet.</p></div>`;
+}
+
+function renderAdminStudentCard(profile) {
+  const latest = profile.tests[0];
+  const latestScore = latest ? `${latest.score}%` : "No test yet";
+  const progress = latest ? latest.placement : "Diagnostic needed";
+  const weakAreas = latest?.missedTopics?.length ? latest.missedTopics.slice(0, 3).join(", ") : "No major weak areas";
+  return `
+    <article class="review-card">
+      <h4>${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</h4>
+      <p><strong>Latest score:</strong> ${escapeHtml(latestScore)}</p>
+      <p><strong>Placement:</strong> ${escapeHtml(progress)}</p>
+      <p><strong>Practice completed:</strong> ${profile.practice.length} question${profile.practice.length === 1 ? "" : "s"}</p>
+      <p><strong>Worksheets:</strong> ${profile.worksheets.length}</p>
+      <p><strong>Focus:</strong> ${escapeHtml(weakAreas)}</p>
+      <div class="actions wrap">
+        <button class="secondary small-button" type="button" data-admin-open="${profile.id}">Open Dashboard</button>
+        <button class="ghost small-button" type="button" data-reset-worksheets="${profile.id}">Reset Worksheet History</button>
+      </div>
+    </article>
+  `;
+}
+
+function refreshProfileSelect() {
+  const profiles = getProfiles();
+  elements.profileSelect.innerHTML = `<option value="">Create or choose profile</option>${profiles
+    .map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</option>`)
+    .join("")}`;
+}
+
+function renderDashboard() {
+  if (!activeProfile) return;
+  const latest = activeProfile.tests[0];
+  elements.dashboardStudent.textContent = `${activeProfile.name}, Grade ${activeProfile.grade}`;
+  elements.dashboardScore.textContent = latest ? `${latest.score}%` : "--";
+  elements.dashboardPlacement.textContent = latest?.placement ?? "No test yet";
+  elements.dashboardNextTest.textContent = latest?.nextRecommendedTest ?? "Take first diagnostic";
+  elements.dashboardCourse.textContent = latest?.courseRecommendation ?? "Diagnostic needed";
+  elements.dashboardTestCount.textContent = activeProfile.tests.length;
+  elements.dashboardPracticeCount.textContent = activeProfile.practice.length;
+  elements.dashboardWorksheetCount.textContent = activeProfile.worksheets.length;
+  elements.dashboardPractice.disabled = !latest;
+  elements.learningPath.innerHTML = (activeProfile.learningPath.length ? activeProfile.learningPath : seedLearningPath()).map(renderPathItem).join("");
+  elements.scoreHistory.innerHTML = activeProfile.tests.length
+    ? activeProfile.tests.slice(0, 8).map((test) => renderProgressRow(new Date(test.date).toLocaleDateString(), test.score, test.placement)).join("")
+    : `<div class="review-card"><p>No tests yet. Start a diagnostic to build history.</p></div>`;
+  elements.topicProgressDashboard.innerHTML = renderTopicProgress(activeProfile);
+  elements.teacherReport.innerHTML = renderTeacherReport(activeProfile);
+  elements.worksheetHistory.innerHTML = renderWorksheetHistory(activeProfile);
+}
+
+function renderPathItem(item) {
+  return `
+    <div class="path-item">
+      <span class="path-rank">${item.priority}</span>
+      <div>
+        <strong>${escapeHtml(item.skill)}</strong>
+        <div class="bar"><span style="width:${Math.min(100, item.currentAccuracy)}%"></span></div>
+        <small>${item.currentAccuracy}% now • target ${item.targetAccuracy}% • ${item.recommendedPracticeCount} questions • ${escapeHtml(item.nextMilestone)}</small>
+      </div>
+      <strong>${escapeHtml(item.difficulty)}</strong>
+    </div>
+  `;
+}
+
+function renderProgressRow(label, percent, detail = "") {
+  return `
+    <div class="topic-row">
+      <div><strong>${escapeHtml(label)}</strong><br /><span>${escapeHtml(detail)}</span><div class="bar"><span style="width:${Math.min(100, percent)}%"></span></div></div>
+      <strong>${percent}%</strong>
+    </div>
+  `;
+}
+
+function renderTopicProgress(profile) {
+  const entries = Object.entries(profile.topicProgress ?? {}).slice(0, 10);
+  if (!entries.length) return `<div class="review-card"><p>Topic progress appears after the first test.</p></div>`;
+  return entries.map(([topic, rows]) => {
+    const trend = rows.map((row) => `${row.percent}%`).join(" → ");
+    return renderProgressRow(topic, rows.at(-1)?.percent ?? 0, trend);
+  }).join("");
+}
+
+function renderTeacherReport(profile) {
+  const latest = profile.tests[0];
+  if (!latest) return `<p>No history yet. The report will populate after the first diagnostic.</p>`;
+  const sortedTopics = [...(latest.topicResults ?? [])].sort((a, b) => b.percent - a.percent);
+  const strongest = sortedTopics.slice(0, 3).map((row) => row.topic).join(", ") || "Not enough data yet";
+  const stillNeeds = sortedTopics.filter((row) => row.percent < 80).slice(-3).map((row) => row.topic).join(", ") || "No major weak areas";
+  const improving = Object.entries(profile.topicProgress ?? {})
+    .filter(([, rows]) => rows.length > 1 && rows.at(-1).percent > rows[0].percent)
+    .map(([topic]) => topic)
+    .slice(0, 3)
+    .join(", ") || "Improvement trend will appear after more tests";
+  return `
+    <p><strong>Current placement:</strong> ${escapeHtml(latest.placement)}</p>
+    <p><strong>Recommended next steps:</strong> ${escapeHtml(latest.courseRecommendation)}</p>
+    <p><strong>Progress trend:</strong> ${profile.tests.slice(0, 5).reverse().map((test) => `${test.score}%`).join(" → ")}</p>
+    <p><strong>Strongest skills:</strong> ${escapeHtml(strongest)}</p>
+    <p><strong>Skills improving:</strong> ${escapeHtml(improving)}</p>
+    <p><strong>Skills still needing practice:</strong> ${escapeHtml(stillNeeds)}</p>
+    <p><strong>Current practice focus:</strong> ${escapeHtml(profile.learningPath[0]?.skill ?? "SAT Math Reasoning")}</p>
+  `;
+}
+
+function renderWorksheetHistory(profile) {
+  if (!profile.worksheets.length) return `<div class="review-card"><p>No worksheets yet.</p></div>`;
+  return profile.worksheets.slice(0, 8).map((worksheet) => `
+    <div class="review-card">
+      <h4>${new Date(worksheet.date).toLocaleDateString()} • ${escapeHtml(worksheet.difficulty)}</h4>
+      <p>${worksheet.questionCount} questions • ${escapeHtml(worksheet.topics.slice(0, 4).join(", "))}</p>
+      <p>${worksheet.completed ? `Completed: ${worksheet.score}%` : "Not scored yet"}</p>
+      <div class="worksheet-score">
+        <input type="number" min="0" max="100" placeholder="Score %" data-worksheet-score="${worksheet.id}" />
+        <button class="secondary small-button" type="button" data-score-worksheet="${worksheet.id}">Save Score</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function showDiagnosticQuestion(question) {
+  elements.questionMeta.textContent = `Question ${session.currentIndex + 1} of ${session.totalQuestions}`;
+  elements.questionTopic.textContent = question.topic;
+  elements.questionText.textContent = question.prompt;
+  elements.difficultyBadge.textContent = DIFFICULTY_LABELS[question.difficulty];
+  elements.progressFill.style.width = `${(session.currentIndex / session.totalQuestions) * 100}%`;
+  elements.answerHint.textContent = "";
+  elements.answerHint.style.color = "var(--red)";
+  elements.submitAnswer.classList.remove("hidden");
+  elements.nextQuestion.classList.add("hidden");
+  renderAnswerInput(elements.answerArea, question);
+}
+
+function showPracticeQuestion(question) {
+  const nextNumber = practiceState.attempts.length + 1;
+  elements.practiceMeta.textContent =
+    nextNumber <= practiceState.goal ? `Practice ${nextNumber} of ${practiceState.goal}` : `Bonus Practice ${nextNumber - practiceState.goal}`;
+  elements.practiceTitle.textContent = question.topic;
+  elements.practiceQuestionText.textContent = question.prompt;
+  elements.practiceDifficulty.textContent = DIFFICULTY_LABELS[question.difficulty];
+  renderPracticeStatus();
+  elements.practiceFeedback.classList.remove("show");
+  elements.practiceFeedback.textContent = "";
+  elements.submitPractice.classList.remove("hidden");
+  elements.nextPractice.classList.add("hidden");
+  elements.nextPractice.textContent = "Next Practice";
+  renderAnswerInput(elements.practiceAnswerArea, question);
+}
+
+function renderPracticeStatus() {
+  if (!practiceState) return;
+  const answered = practiceState.attempts.length;
+  const goal = practiceState.goal;
+  const progress = Math.min(100, Math.round((answered / goal) * 100));
+  const accuracy = answered ? Math.round((practiceState.sessionCorrect / answered) * 100) : 0;
+  const mastered = Object.keys(practiceState.masteredTopics ?? {}).length;
+  const message = answered >= goal
+    ? `Session goal complete: ${practiceState.sessionCorrect}/${answered} correct. ${accuracy >= 80 ? "Strong work. A challenge round is ready." : "Good effort. A few more review questions can help."}`
+    : `Goal: ${goal} focused questions. ${Math.max(0, goal - answered)} to go.`;
+  elements.practiceStatus.innerHTML = `
+    <div><strong>${escapeHtml(message)}</strong></div>
+    <div class="bar"><span style="width:${progress}%"></span></div>
+    <small>${accuracy}% this session • ${practiceState.overallStreak ?? 0} correct in a row • ${mastered} skill${mastered === 1 ? "" : "s"} mastered</small>
+  `;
+}
+
+function practiceCoachMessage(attempt) {
+  if (attempt.levelChange === "mastered") return `${attempt.topic} is looking mastered. Keep going for a challenge question.`;
+  if (attempt.levelChange === "up") return `Level up. The next ${attempt.topic} question will get harder.`;
+  if (attempt.levelChange === "down") return `We’ll slow this skill down and build it back up step by step.`;
+  if (attempt.correct && attempt.overallStreak >= 3) return `${attempt.overallStreak} correct in a row. Nice momentum.`;
+  if (attempt.correct) return `That one is correct. Keep building the streak.`;
+  return `This is a useful miss. Review the explanation, then try the next one a little slower.`;
+}
+
+function renderAnswerInput(container, question) {
+  container.innerHTML = "";
+  if (question.visual) {
+    const visual = document.createElement("div");
+    visual.className = "math-visual";
+    visual.innerHTML = question.visual;
+    container.appendChild(visual);
+  }
+
+  if (question.visualChoices) {
+    const visualGrid = document.createElement("div");
+    visualGrid.className = "visual-choice-grid";
+    visualGrid.innerHTML = question.visualChoices
+      .map((visual, index) => `<div class="visual-choice"><strong>${escapeHtml(question.choices[index])}</strong>${visual}</div>`)
+      .join("");
+    container.appendChild(visualGrid);
+  }
+
+  if (question.interactiveGraph) {
+    container.appendChild(createGraphWorkspace());
+  }
+
+  if (question.type === "multiple-choice") {
+    question.choices.forEach((choice, index) => {
+      const label = document.createElement("label");
+      label.className = "choice";
+      label.innerHTML = `
+        <input type="radio" name="answer" value="${escapeHtml(choice)}" />
+        <span>${String.fromCharCode(65 + index)}. ${escapeHtml(choice)}</span>
+      `;
+      container.appendChild(label);
+    });
+    return;
+  }
+
+  const label = document.createElement("label");
+  label.innerHTML = `
+    Answer
+    <input inputmode="decimal" autocomplete="off" name="answer" placeholder="Type your answer" />
+  `;
+  container.appendChild(label);
+}
+
+function createGraphWorkspace() {
+  const wrap = document.createElement("div");
+  wrap.className = "graph-workspace";
+  wrap.innerHTML = `
+    <div class="graph-toolbar">
+      <span>Interactive graph workspace</span>
+      <button type="button" class="ghost small-button" data-action="line">Draw line</button>
+      <button type="button" class="ghost small-button" data-action="clear">Clear</button>
+    </div>
+    <svg viewBox="0 0 220 220" aria-label="Interactive coordinate plane">
+      ${Array.from({ length: 11 }, (_, i) => {
+        const p = 20 + i * 18;
+        return `<line x1="${p}" y1="20" x2="${p}" y2="200"/><line x1="20" y1="${p}" x2="200" y2="${p}"/>`;
+      }).join("")}
+      <line class="axis" x1="110" y1="20" x2="110" y2="200"/>
+      <line class="axis" x1="20" y1="110" x2="200" y2="110"/>
+      <g class="student-layer"></g>
+    </svg>
+  `;
+  const svgEl = wrap.querySelector("svg");
+  const layer = wrap.querySelector(".student-layer");
+  const points = [];
+  svgEl.addEventListener("click", (event) => {
+    const rect = svgEl.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 220;
+    const y = ((event.clientY - rect.top) / rect.height) * 220;
+    if (x < 20 || x > 200 || y < 20 || y > 200) return;
+    points.push([x, y]);
+    layer.insertAdjacentHTML("beforeend", `<circle cx="${x}" cy="${y}" r="5" class="student-point"/>`);
+  });
+  wrap.querySelector("[data-action='line']").addEventListener("click", () => {
+    if (points.length < 2) return;
+    const [a, b] = points.slice(-2);
+    layer.insertAdjacentHTML("beforeend", `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="student-line"/>`);
+  });
+  wrap.querySelector("[data-action='clear']").addEventListener("click", () => {
+    points.length = 0;
+    layer.innerHTML = "";
+  });
+  return wrap;
+}
+
+function getAnswer(container, type) {
+  if (type === "multiple-choice") {
+    return container.querySelector("input:checked")?.value ?? "";
+  }
+  return container.querySelector("input[name='answer']")?.value.trim() ?? "";
+}
+
+function lockAnswerArea(container) {
+  container.querySelectorAll("input").forEach((input) => {
+    input.disabled = true;
+  });
+}
+
+function renderResults() {
+  elements.studentSummary.textContent = `${session.student.name}, Grade ${session.student.grade} • Completed ${new Date(
+    session.completedAt,
+  ).toLocaleDateString()}`;
+  elements.overallScore.textContent = `${results.overallPercent}%`;
+  elements.placementLevel.textContent = results.placement;
+  elements.currentReadiness.textContent = results.currentReadiness;
+  elements.difficultyReached.textContent = results.difficultyReached;
+  elements.practiceFocus.textContent = results.reviewTopics[0] ?? "No assigned practice";
+  elements.coursePlacement.textContent = results.courseRecommendation;
+  elements.satPerformance.textContent = `${results.satPerformance.percent}%`;
+  elements.testDifficultyFit.textContent = results.testDifficultyFit;
+  elements.nextTestLevel.textContent = results.nextRecommendedTest;
+  elements.readinessNarrative.textContent = `${results.currentReadiness}: ${results.courseRecommendation}. Test difficulty fit: ${results.testDifficultyFit}. ${results.higherLevelRecommended ? "A higher-level test is recommended." : "This test provided usable placement information."} This recommendation is based on the overall score, grade-level topic accuracy, graphing performance, SAT-style reasoning, and the difficulty level reached during the adaptive test.`;
+  elements.strongestSkills.innerHTML = renderList(results.strongestSkills.length ? results.strongestSkills : ["No clear strength yet"]);
+  elements.weakestSkills.innerHTML = renderList(results.weakestSkills.length ? results.weakestSkills : ["No major weak areas were found on this test."]);
+  elements.nextSteps.innerHTML = renderList(results.nextSteps);
+  elements.graphingPerformance.textContent = `Graphing: ${results.graphingPerformance.percent}% (${results.graphingPerformance.correct}/${results.graphingPerformance.total})`;
+  elements.reasoningPerformance.textContent = `SAT-style reasoning: ${results.satPerformance.percent}% (${results.satPerformance.correct}/${results.satPerformance.total})`;
+
+  elements.topicResults.innerHTML = results.topicResults
+    .map(
+      (row) => `
+        <div class="topic-row">
+          <div>
+            <strong>${escapeHtml(row.topic)}</strong><br />
+            <span>${row.correct}/${row.total} correct • ${row.difficulty}</span>
+          </div>
+          <strong>${row.percent}%</strong>
+        </div>
+      `,
+    )
+    .join("");
+
+  elements.improvementList.innerHTML = renderList(results.reviewTopics.length ? results.reviewTopics : ["No major weak areas were found on this test."]);
+  elements.practiceWeakAreas.disabled = results.reviewTopics.length === 0;
+  elements.practiceWeakAreas.textContent = results.reviewTopics.length ? "Practice Weak Areas" : "No Weak-Area Practice Needed";
+
+  elements.missedReview.innerHTML = results.missed.length
+    ? results.missed.map(renderMissedQuestion).join("")
+    : `<div class="review-card"><h4>No missed questions</h4><p>The student answered every question correctly.</p></div>`;
+}
+
+function renderList(items) {
+  return items.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function renderMissedQuestion(item, index) {
+  return `
+    <article class="review-card">
+      <h4>${index + 1}. ${escapeHtml(item.topic)} • ${DIFFICULTY_LABELS[item.difficulty]}</h4>
+      <p><strong>Question:</strong> ${escapeHtml(item.prompt)}</p>
+      <p><span class="answer-mark wrong">Student answer: ${escapeHtml(item.studentAnswer)}</span></p>
+      <p><span class="answer-mark right">Correct answer: ${escapeHtml(item.answer)}</span></p>
+      ${item.answerFormat ? `<p><strong>Expected format:</strong> ${escapeHtml(item.answerFormat.replace("Answer format: ", ""))}</p>` : ""}
+      <p><strong>Equivalent answers:</strong> ${item.allowEquivalent === false ? "A specific format was required for this question." : "Mathematically equivalent answers were accepted when they matched the stated format and rounding rule."}</p>
+      <p><strong>Step-by-step:</strong> ${escapeHtml(item.explanation)}</p>
+      <p><strong>How to enter this next time:</strong> Follow the format line in the question first, then round only if the prompt gives a rounding rule.</p>
+      <p><strong>Remember this:</strong> ${escapeHtml(item.tip)}</p>
+    </article>
+  `;
+}
+
+document.addEventListener("click", (event) => {
+  const backAdmin = event.target.closest("[data-back-admin]");
+  if (backAdmin) {
+    backToAdmin();
+    return;
+  }
+
+  const exitButton = event.target.closest("[data-exit-profile]");
+  if (exitButton) {
+    exitProfile();
+    return;
+  }
+
+  const openProfile = event.target.closest("[data-admin-open]");
+  if (openProfile) {
+    activeProfile = getProfile(openProfile.dataset.adminOpen);
+    if (!activeProfile) return;
+    openedFromAdmin = true;
+    elements.studentName.value = activeProfile.name;
+    elements.gradeLevel.value = activeProfile.grade;
+    renderDashboard();
+    showScreen("dashboard");
+    return;
+  }
+
+  const resetWorksheets = event.target.closest("[data-reset-worksheets]");
+  if (resetWorksheets) {
+    const profile = getProfile(resetWorksheets.dataset.resetWorksheets);
+    if (!profile) return;
+    if (!confirm(`Reset worksheet history for ${profile.name}? This deletes saved worksheet records for this local profile.`)) return;
+    const updated = resetWorksheetHistory(profile.id);
+    if (activeProfile?.id === updated?.id) activeProfile = updated;
+    renderAdminDashboard();
+    if (activeProfile) renderDashboard();
+    return;
+  }
+
+  const button = event.target.closest("[data-score-worksheet]");
+  if (!button || !activeProfile) return;
+  const id = button.dataset.scoreWorksheet;
+  const input = document.querySelector(`[data-worksheet-score="${CSS.escape(id)}"]`);
+  if (!input?.value) return;
+  activeProfile = scoreWorksheet(activeProfile.id, id, input.value);
+  renderDashboard();
+});
+
+function seedLearningPath() {
+  return [
+    {
+      priority: 1,
+      skill: "Take first diagnostic",
+      currentAccuracy: 0,
+      targetAccuracy: 80,
+      recommendedPracticeCount: 0,
+      difficulty: "Start",
+      nextMilestone: "Complete diagnostic",
+    },
+  ];
+}
+
+function resultsFromProfileTest(test) {
+  const reviewTopics = test.missedTopics.length ? test.missedTopics : (activeProfile?.learningPath ?? []).map((item) => item.skill);
+  return {
+    weakTopics: reviewTopics,
+    reviewTopics,
+    topicResults: test.topicResults,
+    overallPercent: test.score,
+    missed: [],
+  };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}

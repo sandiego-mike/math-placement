@@ -1,0 +1,11 @@
+{
+  "name": "adaptive-math-placement",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 4173",
+    "check": "node --check src/questions.js && node --check src/engine.js && node --check src/storage.js && node --check src/report.js && node --check src/app.js && node --check tests/self-check.js",
+    "test": "node tests/self-check.js"
+  }
+}

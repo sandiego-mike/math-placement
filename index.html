@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adaptive Math Placement</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Adaptive Placement</p>
+          <h1>Math level check</h1>
+        </div>
+        <div class="session-pill" id="sessionDate"></div>
+      </header>
+
+      <main>
+        <section class="screen active" id="startScreen" aria-labelledby="startTitle">
+          <div class="intro-layout">
+            <div class="intro-copy">
+              <h2 id="startTitle">Find the right starting point.</h2>
+              <p>
+                The test adjusts as the student answers. Every run creates new
+                numbers, choices, and explanations, then turns weak areas into a
+                practice plan.
+              </p>
+            </div>
+
+            <form class="student-form" id="studentForm">
+              <label>
+                Existing profile
+                <select id="profileSelect" name="profileSelect">
+                  <option value="">Create or choose profile</option>
+                </select>
+              </label>
+              <label>
+                Student name
+                <input id="studentName" name="studentName" autocomplete="name" required />
+              </label>
+              <label>
+                Grade level
+                <select id="gradeLevel" name="gradeLevel" required>
+                  <option value="">Choose grade</option>
+                  <option>5</option>
+                  <option>6</option>
+                  <option>7</option>
+                  <option>8</option>
+                  <option>9</option>
+                  <option>10</option>
+                  <option>11</option>
+                  <option>12</option>
+                  <option>College</option>
+                  <option>Adult learner</option>
+                </select>
+              </label>
+              <button class="primary" type="submit">Open Dashboard</button>
+            </form>
+
+            <form class="student-form admin-login" id="adminForm">
+              <div>
+                <p class="eyebrow">Admin</p>
+                <h3>Progress manager</h3>
+              </div>
+              <label>
+                Admin password
+                <input id="adminPassword" name="adminPassword" type="password" autocomplete="current-password" />
+              </label>
+              <p class="hint-text" id="adminLoginMessage"></p>
+              <button class="secondary" type="submit">Open Admin View</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="screen" id="adminScreen" aria-labelledby="adminTitle">
+          <div class="results-hero">
+            <div>
+              <p class="eyebrow">Admin View</p>
+              <h2 id="adminTitle">Student progress</h2>
+              <p>Review student profiles, open dashboards, and manage worksheet records.</p>
+            </div>
+            <button class="ghost" id="adminLogout" type="button">Back to Login</button>
+          </div>
+
+          <section class="report-panel">
+            <h3>Students</h3>
+            <div id="adminStudents" class="topic-list"></div>
+          </section>
+        </section>
+
+        <section class="screen" id="dashboardScreen" aria-labelledby="dashboardTitle">
+          <div class="results-hero">
+            <div>
+              <p class="eyebrow">Student Dashboard</p>
+              <h2 id="dashboardTitle">Progress tracker</h2>
+              <p id="dashboardStudent"></p>
+            </div>
+            <div class="dashboard-hero-actions">
+              <div class="score-ring">
+                <strong id="dashboardScore">--</strong>
+                <span>latest</span>
+              </div>
+              <button class="secondary small-button hidden" type="button" data-back-admin>Back to Admin</button>
+              <button class="ghost small-button" type="button" data-exit-profile>Exit Profile</button>
+            </div>
+          </div>
+
+          <div class="summary-grid">
+            <div class="metric"><span>Current placement</span><strong id="dashboardPlacement"></strong></div>
+            <div class="metric"><span>Next test level</span><strong id="dashboardNextTest"></strong></div>
+            <div class="metric"><span>Course path</span><strong id="dashboardCourse"></strong></div>
+            <div class="metric"><span>Tests taken</span><strong id="dashboardTestCount"></strong></div>
+            <div class="metric"><span>Practice completed</span><strong id="dashboardPracticeCount"></strong></div>
+            <div class="metric"><span>Worksheets</span><strong id="dashboardWorksheetCount"></strong></div>
+          </div>
+
+          <section class="report-panel">
+            <h3>Daily practice plan</h3>
+            <div id="learningPath" class="path-list"></div>
+          </section>
+
+          <div class="two-column">
+            <section>
+              <h3>Score history</h3>
+              <div id="scoreHistory" class="topic-list"></div>
+            </section>
+            <section>
+              <h3>Topic progress</h3>
+              <div id="topicProgressDashboard" class="topic-list"></div>
+            </section>
+          </div>
+
+          <div class="two-column">
+            <section>
+              <h3>Parent / teacher report</h3>
+              <div id="teacherReport" class="review-card"></div>
+            </section>
+            <section>
+              <h3>Worksheet history</h3>
+              <div id="worksheetHistory" class="topic-list"></div>
+            </section>
+          </div>
+
+          <div class="actions wrap">
+            <button class="primary" id="startFromDashboard" type="button">Start Test</button>
+            <button class="secondary" id="dashboardPractice" type="button">Practice Weak Areas</button>
+            <label class="compact-select">
+              Worksheet length
+              <select id="worksheetLength">
+                <option value="8">Quick Practice: 8 questions</option>
+                <option value="12" selected>Standard Practice: 12 questions</option>
+                <option value="20">Full Practice: 20 questions</option>
+              </select>
+            </label>
+            <button class="secondary" id="createWorksheet" type="button">Create Daily Worksheet</button>
+          </div>
+        </section>
+
+        <section class="screen" id="testScreen" aria-labelledby="questionTopic">
+          <div class="test-header">
+            <div>
+              <p class="eyebrow" id="questionMeta">Question 1</p>
+              <h2 id="questionTopic">Arithmetic</h2>
+            </div>
+            <div class="test-tools">
+              <button class="secondary small-button hidden" type="button" data-back-admin>Back to Admin</button>
+              <button class="ghost small-button" id="restartTestTop" type="button">Restart Test</button>
+              <button class="ghost small-button" type="button" data-exit-profile>Exit Profile</button>
+              <div class="difficulty-badge" id="difficultyBadge">Easy</div>
+            </div>
+          </div>
+
+          <div class="progress-track" aria-label="Test progress">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+
+          <article class="question-panel">
+            <p class="question-text" id="questionText"></p>
+            <div class="answer-area" id="answerArea"></div>
+            <p class="hint-text" id="answerHint"></p>
+          </article>
+
+          <div class="actions">
+            <button class="ghost" id="restartTest" type="button">Restart Test</button>
+            <button class="secondary" id="submitAnswer" type="button">Submit</button>
+            <button class="primary hidden" id="nextQuestion" type="button">Next</button>
+          </div>
+        </section>
+
+        <section class="screen" id="resultsScreen" aria-labelledby="resultsTitle">
+          <div class="results-hero">
+            <div>
+              <p class="eyebrow">Results</p>
+              <h2 id="resultsTitle">Placement report</h2>
+              <p id="studentSummary"></p>
+            </div>
+            <div class="score-ring">
+              <strong id="overallScore">0%</strong>
+              <span>overall</span>
+            </div>
+          </div>
+
+          <div class="summary-grid">
+            <div class="metric">
+              <span>Recommended level</span>
+              <strong id="placementLevel"></strong>
+            </div>
+            <div class="metric">
+              <span>Current readiness</span>
+              <strong id="currentReadiness"></strong>
+            </div>
+            <div class="metric">
+              <span>Difficulty reached</span>
+              <strong id="difficultyReached"></strong>
+            </div>
+            <div class="metric">
+              <span>Practice focus</span>
+              <strong id="practiceFocus"></strong>
+            </div>
+            <div class="metric">
+              <span>Course placement</span>
+              <strong id="coursePlacement"></strong>
+            </div>
+            <div class="metric">
+              <span>SAT-style performance</span>
+              <strong id="satPerformance"></strong>
+            </div>
+            <div class="metric">
+              <span>Test difficulty fit</span>
+              <strong id="testDifficultyFit"></strong>
+            </div>
+            <div class="metric">
+              <span>Next test level</span>
+              <strong id="nextTestLevel"></strong>
+            </div>
+          </div>
+
+          <section class="report-panel">
+            <h3>Math placement summary</h3>
+            <p id="readinessNarrative"></p>
+            <div class="three-column">
+              <div>
+                <h4>Strongest skills</h4>
+                <ul id="strongestSkills" class="plain-list compact"></ul>
+              </div>
+              <div>
+                <h4>Weakest skills</h4>
+                <ul id="weakestSkills" class="plain-list compact"></ul>
+              </div>
+              <div>
+                <h4>Recommended next steps</h4>
+                <ul id="nextSteps" class="plain-list compact"></ul>
+              </div>
+            </div>
+            <div class="mini-metrics">
+              <span id="graphingPerformance"></span>
+              <span id="reasoningPerformance"></span>
+            </div>
+          </section>
+
+          <div class="two-column">
+            <section>
+              <h3>Topic results</h3>
+              <div id="topicResults" class="topic-list"></div>
+            </section>
+            <section>
+              <h3>Topics to improve</h3>
+              <ul id="improvementList" class="plain-list"></ul>
+            </section>
+          </div>
+
+          <section>
+            <h3>Review missed questions</h3>
+            <div id="missedReview" class="review-list"></div>
+          </section>
+
+          <div class="actions wrap">
+            <button class="secondary" id="practiceWeakAreas" type="button">Practice Weak Areas</button>
+            <button class="secondary" id="exportPdf" type="button">Export PDF</button>
+            <button class="secondary" id="backToDashboard" type="button">Student Dashboard</button>
+            <button class="secondary hidden" type="button" data-back-admin>Back to Admin</button>
+            <button class="ghost" type="button" data-exit-profile>Exit Profile</button>
+            <button class="primary" id="newTest" type="button">Start New Test</button>
+          </div>
+        </section>
+
+        <section class="screen" id="practiceScreen" aria-labelledby="practiceTitle">
+          <div class="test-header">
+            <div>
+              <p class="eyebrow" id="practiceMeta">Practice</p>
+              <h2 id="practiceTitle">Practice weak areas</h2>
+            </div>
+            <div class="difficulty-badge" id="practiceDifficulty">Easy</div>
+          </div>
+
+          <article class="question-panel">
+            <div class="practice-status" id="practiceStatus"></div>
+            <p class="question-text" id="practiceQuestionText"></p>
+            <div class="answer-area" id="practiceAnswerArea"></div>
+            <div class="feedback" id="practiceFeedback"></div>
+          </article>
+
+          <div class="actions wrap">
+            <button class="secondary" id="submitPractice" type="button">Submit</button>
+            <button class="primary hidden" id="nextPractice" type="button">Next Practice</button>
+            <button class="ghost" id="backToResults" type="button">Review Results</button>
+            <button class="ghost" id="practiceDashboard" type="button">Student Dashboard</button>
+            <button class="secondary hidden" type="button" data-back-admin>Back to Admin</button>
+            <button class="ghost" type="button" data-exit-profile>Exit Profile</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
