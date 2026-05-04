@@ -1,5 +1,40 @@
 export const importedReports = [
   {
+    name: "Halle Arias",
+    grade: "5",
+    test: {
+      id: "import-halle-arias-2026-05-03",
+      date: "2026-05-04T03:00:00.000Z",
+      type: "Placement Test",
+      score: 75,
+      placement: "Pre-Algebra",
+      currentReadiness: "On grade level",
+      courseRecommendation: "Pre-Algebra",
+      nextRecommendedTest: "A grade-level readiness diagnostic",
+      missedTopics: ["Graphing Basics", "Geometry Basics", "Decimals", "Ratios and Proportions", "Fractions"],
+      graphingPerformance: { correct: 0, total: 1, percent: 0 },
+      satPerformance: { correct: 0, total: 0, percent: 0 },
+      testDifficultyFit: "Appropriate",
+      masteredLevel: false,
+      challengeUnlocked: false,
+      nextLevelGrade: "6",
+      dailyPlan: [
+        { day: 1, tasks: ["5 Graphing Basics questions", "3 Geometry Basics questions"] },
+        { day: 2, tasks: ["4 Decimals problems", "4 mixed grade-level questions"] },
+      ],
+      topicResults: [
+        { topic: "Arithmetic", correct: 4, total: 4, percent: 100, difficulty: "Hard" },
+        { topic: "Fractions", correct: 3, total: 4, percent: 75, difficulty: "Medium" },
+        { topic: "Decimals", correct: 2, total: 3, percent: 67, difficulty: "Medium" },
+        { topic: "Percents", correct: 3, total: 3, percent: 100, difficulty: "Hard" },
+        { topic: "Ratios and Proportions", correct: 2, total: 3, percent: 67, difficulty: "Medium" },
+        { topic: "Word Problems", correct: 3, total: 3, percent: 100, difficulty: "Hard" },
+        { topic: "Geometry Basics", correct: 1, total: 3, percent: 33, difficulty: "Hard" },
+        { topic: "Graphing Basics", correct: 0, total: 1, percent: 0, difficulty: "Hard" },
+      ],
+    },
+  },
+  {
     name: "Hannah Arias",
     grade: "7",
     test: {
