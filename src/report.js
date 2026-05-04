@@ -91,19 +91,43 @@ export function exportResultsPdf(session, results) {
   const fileName = `${session.student.name.replace(/\s+/g, "-").toLowerCase()}-math-placement-report.pdf`;
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   if (isMobile) {
-    const url = URL.createObjectURL(doc.output("blob"));
-    const tab = window.open(url, "_blank");
-    if (!tab) {
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    showMobilePdfNotification(URL.createObjectURL(doc.output("blob")), fileName);
   } else {
     doc.save(fileName);
   }
+}
+
+function showMobilePdfNotification(blobUrl, fileName) {
+  document.getElementById("math-pdf-toast")?.remove();
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const hint = isIOS
+    ? "Tap <strong>Open PDF</strong>, then tap the share icon <strong>↑</strong> and choose <strong>Save to Files</strong>."
+    : "Tap <strong>Open PDF</strong> — your browser will download or open it.";
+  const toast = document.createElement("div");
+  toast.id = "math-pdf-toast";
+  toast.style.cssText = [
+    "position:fixed;bottom:0;left:0;right:0;z-index:9999",
+    "background:#fff;border-top:3px solid #2563eb",
+    "padding:16px 20px;box-shadow:0 -4px 24px rgba(0,0,0,.18)",
+    "font-family:inherit;animation:pdf-slide-up .25s ease",
+  ].join(";");
+  toast.innerHTML = `
+    <style>@keyframes pdf-slide-up{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+    <div style="max-width:560px;margin:0 auto">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <strong style="font-size:1rem">Your PDF is ready</strong>
+          <p style="margin:5px 0 0;font-size:.85rem;color:#5c6978;line-height:1.4">${hint}</p>
+        </div>
+        <button type="button" onclick="document.getElementById('math-pdf-toast').remove()"
+          style="background:none;border:none;font-size:1.4rem;cursor:pointer;line-height:1;color:#5c6978;padding:0;flex-shrink:0">✕</button>
+      </div>
+      <a href="${blobUrl}" download="${fileName}" target="_blank" rel="noopener"
+        style="display:inline-block;margin-top:12px;padding:11px 24px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:.95rem">
+        Open PDF
+      </a>
+    </div>
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => { URL.revokeObjectURL(blobUrl); toast.remove(); }, 90000);
 }
