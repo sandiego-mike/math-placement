@@ -68,6 +68,8 @@ export function upsertProfile({ name, grade }) {
       lastActiveAt: new Date().toISOString(),
       activityStatus: "Profile created",
       lastGradeRolloverYear: null,
+      avatar: null,
+      leaderboardVisible: true,
     };
     profiles.push(profile);
   } else {

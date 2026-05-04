@@ -27,6 +27,7 @@ import {
   saveSession,
   setActiveProfileId,
   touchProfile,
+  updateProfile,
   upsertProfile,
 } from "./storage.js";
 import { exportResultsPdf } from "./report.js";
@@ -40,6 +41,7 @@ import {
   syncProfileToSupabase,
   testSupabaseConnection,
 } from "./supabaseSync.js";
+import { computeLeaderboard, MATH_AVATARS, CATEGORY_STYLES } from "./leaderboard.js";
 
 const seededStudentProfiles = [
   { name: "Halle Arias", grade: "5", notes: "5th grade going to 6th", aliases: ["Halle"] },
@@ -163,6 +165,8 @@ const elements = {
   pushSupabase: $("#pushSupabase"),
   pullSupabase: $("#pullSupabase"),
   backToAdminButtons: document.querySelectorAll("[data-back-admin]"),
+  leaderboardSection: $("#leaderboardSection"),
+  leaderboardGrid: $("#leaderboardGrid"),
 };
 
 let session = null;
@@ -177,6 +181,7 @@ importStudentProfiles(seededStudentProfiles);
 applyAnnualGradeRollover();
 refreshProfileSelect();
 renderSupabaseStatus();
+renderLeaderboard();
 
 if (adminSessionActive) {
   renderAdminDashboard();
@@ -260,6 +265,7 @@ elements.createWorksheet.addEventListener("click", async () => {
   await exportWorksheetPdf(worksheet);
   activeProfile = recordWorksheet(activeProfile.id, worksheet);
   queueProfileSync(activeProfile);
+  renderLeaderboard();
   renderDashboard();
 });
 
@@ -300,6 +306,7 @@ elements.nextQuestion.addEventListener("click", () => {
     if (activeProfile) {
       activeProfile = recordTest(activeProfile.id, session, results);
       queueProfileSync(activeProfile);
+      renderLeaderboard();
     }
     renderResults();
     showScreen("results");
@@ -329,6 +336,7 @@ elements.submitPractice.addEventListener("click", () => {
   if (activeProfile) {
     activeProfile = recordPractice(activeProfile.id, attempt);
     queueProfileSync(activeProfile);
+    renderLeaderboard();
   }
   lockAnswerArea(elements.practiceAnswerArea);
   renderPracticeStatus();
@@ -374,6 +382,7 @@ elements.importProfilesFile.addEventListener("change", async () => {
     const summary = importProfilesData(payload);
     refreshProfileSelect();
     renderAdminDashboard();
+    renderLeaderboard();
     elements.adminTransferMessage.textContent = `Imported results: ${summary.addedProfiles} new profile${summary.addedProfiles === 1 ? "" : "s"}, ${summary.updatedProfiles} updated.`;
   } catch (error) {
     elements.adminTransferMessage.textContent = error instanceof Error ? error.message : "Could not import that results file.";
@@ -408,6 +417,7 @@ elements.pullSupabase.addEventListener("click", async () => {
     const summary = importProfilesData({ profiles });
     refreshProfileSelect();
     renderAdminDashboard();
+    renderLeaderboard();
     return `Downloaded cloud results: ${summary.addedProfiles} new, ${summary.updatedProfiles} updated.`;
   });
 });
@@ -533,18 +543,30 @@ function renderAdminStudentCard(profile) {
   const progress = latest ? latest.placement : "Diagnostic needed";
   const weakAreas = latest?.missedTopics?.length ? latest.missedTopics.slice(0, 3).join(", ") : "No major weaknesses detected";
   const activity = activityLabel(profile);
+  const avatar = profile.avatar || "⭐";
+  const visible = profile.leaderboardVisible !== false;
+  const avatarOptions = MATH_AVATARS.map(
+    (emoji) => `<button class="avatar-option" type="button" data-set-avatar="${profile.id}" data-emoji="${escapeHtml(emoji)}">${emoji}</button>`
+  ).join("");
   return `
     <article class="review-card">
-      <h4>${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</h4>
+      <div class="admin-card-top">
+        <button class="admin-avatar-bubble" type="button" data-pick-avatar="${profile.id}" title="Change avatar">${avatar}</button>
+        <div>
+          <h4 style="margin:0">${escapeHtml(profile.name)} • Grade ${escapeHtml(profile.grade)}</h4>
+          <p style="margin:4px 0 0;font-size:0.82rem;color:var(--muted)">${escapeHtml(activity.status)} • ${escapeHtml(activity.when)}</p>
+        </div>
+      </div>
+      <div class="avatar-picker" id="avatar-picker-${profile.id}">${avatarOptions}</div>
       <p><strong>Latest score:</strong> ${escapeHtml(latestScore)}</p>
       <p><strong>Placement:</strong> ${escapeHtml(progress)}</p>
       <p><strong>Practice completed:</strong> ${profile.practice.length} question${profile.practice.length === 1 ? "" : "s"}</p>
       <p><strong>Worksheets:</strong> ${profile.worksheets.length}</p>
       <p><strong>Focus:</strong> ${escapeHtml(weakAreas)}</p>
-      <p><strong>Activity:</strong> ${escapeHtml(activity.status)} • ${escapeHtml(activity.when)}</p>
       <div class="actions wrap">
         <button class="secondary small-button" type="button" data-admin-open="${profile.id}">Open Dashboard</button>
         <button class="secondary small-button" type="button" data-export-profile="${profile.id}">Export Results</button>
+        <button class="ghost small-button leaderboard-toggle" type="button" data-toggle-leaderboard="${profile.id}">${visible ? "Hide from Highlights" : "Show in Highlights"}</button>
         <button class="ghost small-button" type="button" data-reset-worksheets="${profile.id}">Reset Worksheet History</button>
       </div>
     </article>
@@ -946,6 +968,32 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pickAvatar = event.target.closest("[data-pick-avatar]");
+  if (pickAvatar) {
+    const picker = document.getElementById(`avatar-picker-${pickAvatar.dataset.pickAvatar}`);
+    if (picker) picker.classList.toggle("show");
+    return;
+  }
+
+  const setAvatar = event.target.closest("[data-set-avatar]");
+  if (setAvatar) {
+    updateProfile(setAvatar.dataset.setAvatar, (p) => { p.avatar = setAvatar.dataset.emoji; return p; });
+    renderAdminDashboard();
+    renderLeaderboard();
+    return;
+  }
+
+  const toggleLeaderboard = event.target.closest("[data-toggle-leaderboard]");
+  if (toggleLeaderboard) {
+    updateProfile(toggleLeaderboard.dataset.toggleLeaderboard, (p) => {
+      p.leaderboardVisible = p.leaderboardVisible === false ? true : false;
+      return p;
+    });
+    renderAdminDashboard();
+    renderLeaderboard();
+    return;
+  }
+
   const openProfile = event.target.closest("[data-admin-open]");
   if (openProfile) {
     activeProfile = getProfile(openProfile.dataset.adminOpen);
@@ -988,6 +1036,31 @@ document.addEventListener("click", (event) => {
   queueProfileSync(activeProfile);
   renderDashboard();
 });
+
+function renderLeaderboard() {
+  if (!elements.leaderboardSection || !elements.leaderboardGrid) return;
+  const awards = computeLeaderboard(getProfiles());
+  if (!awards.length) {
+    elements.leaderboardSection.classList.add("hidden");
+    return;
+  }
+  elements.leaderboardSection.classList.remove("hidden");
+  elements.leaderboardGrid.innerHTML = awards.map((award) => {
+    const styles = CATEGORY_STYLES[award.category] ?? CATEGORY_STYLES["Top Score"];
+    const avatar = award.student.avatar || "⭐";
+    return `
+      <article class="highlight-card" style="--card-accent: ${styles.accent}">
+        <div class="highlight-avatar">${avatar}</div>
+        <p class="highlight-category">${escapeHtml(award.category)}</p>
+        <p class="highlight-name">${escapeHtml(award.student.name)}</p>
+        <span class="highlight-badge" style="background:${styles.badge};color:${styles.badgeText}">
+          ${award.badgeEmoji} ${escapeHtml(award.badge)}
+        </span>
+        <p class="highlight-achievement">${escapeHtml(award.achievement)}</p>
+      </article>
+    `;
+  }).join("");
+}
 
 function renderSupabaseStatus(message = "") {
   const config = getSupabaseConfig();

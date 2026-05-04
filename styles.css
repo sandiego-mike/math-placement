@@ -714,6 +714,158 @@ select {
   display: block;
 }
 
+/* ── Leaderboard ─────────────────────────────────────────────── */
+
+.leaderboard-section {
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.leaderboard-header {
+  margin-bottom: 22px;
+}
+
+.leaderboard-title {
+  margin: 4px 0 0;
+  font-size: clamp(1.25rem, 3vw, 1.7rem);
+}
+
+.leaderboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 16px;
+}
+
+.highlight-card {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 22px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+  overflow: hidden;
+}
+
+.highlight-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--card-accent, var(--blue));
+}
+
+.highlight-avatar {
+  font-size: 2.6rem;
+  line-height: 1.2;
+}
+
+.highlight-category {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.highlight-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.highlight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: center;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.highlight-achievement {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+/* ── Admin avatar & leaderboard toggle ───────────────────────── */
+
+.admin-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-avatar-bubble {
+  flex: 0 0 auto;
+  font-size: 2rem;
+  line-height: 1;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--sky);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.admin-avatar-bubble:hover {
+  background: #dbeafe;
+}
+
+.avatar-picker {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.avatar-picker.show {
+  display: flex;
+}
+
+.avatar-option {
+  min-height: 0;
+  padding: 6px;
+  font-size: 1.35rem;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.avatar-option:hover {
+  background: var(--sky);
+  border-color: var(--blue);
+}
+
+.leaderboard-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  padding: 0 12px;
+  min-height: 32px;
+}
+
+/* ── End leaderboard ─────────────────────────────────────────── */
+
 @media (max-width: 760px) {
   .app-shell {
     width: min(100% - 20px, 1100px);
