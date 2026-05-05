@@ -327,6 +327,26 @@ select {
   gap: 12px;
 }
 
+.symbol-pad {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.symbol-pad span {
+  margin-right: 2px;
+}
+
+.symbol-pad button {
+  min-width: 42px;
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 1rem;
+}
+
 .practice-status {
   display: grid;
   gap: 10px;

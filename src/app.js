@@ -863,11 +863,21 @@ function renderAnswerInput(container, question) {
   }
 
   const label = document.createElement("label");
+  const needsTextKeyboard = /fraction|improper|sqrt|root|exact|equivalent|percent|do not convert/i.test(question.answerFormat ?? "");
+  const inputMode = needsTextKeyboard ? "text" : "decimal";
   label.innerHTML = `
     Answer
-    <input inputmode="decimal" autocomplete="off" name="answer" placeholder="Type your answer" />
+    <input inputmode="${inputMode}" autocomplete="off" name="answer" placeholder="Type your answer" />
   `;
   container.appendChild(label);
+  const symbolPad = document.createElement("div");
+  symbolPad.className = "symbol-pad";
+  symbolPad.setAttribute("aria-label", "Math symbols");
+  symbolPad.innerHTML = `
+    <span>Math symbols</span>
+    ${["/", "√", "^", "%", "-", "."].map((symbol) => `<button type="button" class="ghost small-button" data-insert-symbol="${escapeHtml(symbol)}">${escapeHtml(symbol)}</button>`).join("")}
+  `;
+  container.appendChild(symbolPad);
 }
 
 function createGraphWorkspace() {
@@ -1051,6 +1061,15 @@ function renderMissedQuestion(item, index) {
 }
 
 document.addEventListener("click", (event) => {
+  const symbolButton = event.target.closest("[data-insert-symbol]");
+  if (symbolButton) {
+    const area = symbolButton.closest(".answer-area");
+    const input = area?.querySelector("input[name='answer']");
+    if (!input) return;
+    insertIntoInput(input, symbolButton.dataset.insertSymbol ?? "");
+    return;
+  }
+
   const backAdmin = event.target.closest("[data-back-admin]");
   if (backAdmin) {
     backToAdmin();
@@ -1134,6 +1153,15 @@ document.addEventListener("click", (event) => {
   queueProfileSync(activeProfile);
   renderDashboard();
 });
+
+function insertIntoInput(input, value) {
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = `${input.value.slice(0, start)}${value}${input.value.slice(end)}`;
+  input.focus();
+  const caret = start + value.length;
+  input.setSelectionRange(caret, caret);
+}
 
 function renderLeaderboard() {
   if (!elements.leaderboardSection || !elements.leaderboardGrid) return;

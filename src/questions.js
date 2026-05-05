@@ -300,11 +300,36 @@ const scatterVisual = (slope, start) => {
   return svg(`${axes()}${dots}<line x1="70" y1="160" x2="185" y2="60" stroke="#168a63" stroke-width="3" stroke-dasharray="6 4"/>`, 300, 220);
 };
 
-const barVisual = (start, end) =>
-  svg(`<line x1="55" y1="180" x2="285" y2="180" stroke="#647181" stroke-width="2"/><rect x="90" y="${180 - start}" width="55" height="${start}" fill="#93c5fd"/><rect x="200" y="${180 - end}" width="55" height="${end}" fill="#86efac"/><text x="118" y="202" text-anchor="middle">Start</text><text x="228" y="202" text-anchor="middle">End</text><text x="118" y="${170 - start}" text-anchor="middle">${start}</text><text x="228" y="${170 - end}" text-anchor="middle">${end}</text>`);
+const barVisual = (start, end) => {
+  const max = Math.max(start, end, 1);
+  const startHeight = Math.max(24, (start / max) * 125);
+  const endHeight = Math.max(24, (end / max) * 125);
+  return svg(`<line x1="55" y1="180" x2="285" y2="180" stroke="#647181" stroke-width="2"/><rect x="90" y="${180 - startHeight}" width="55" height="${startHeight}" fill="#93c5fd"/><rect x="200" y="${180 - endHeight}" width="55" height="${endHeight}" fill="#86efac"/><text x="118" y="202" text-anchor="middle">Start</text><text x="228" y="202" text-anchor="middle">End</text>`);
+};
 
 const trendVisual = (start, end, xLabel = "weeks") =>
-  svg(`<line x1="55" y1="180" x2="305" y2="180" stroke="#647181" stroke-width="2"/><line x1="55" y1="180" x2="55" y2="35" stroke="#647181" stroke-width="2"/><line x1="75" y1="150" x2="285" y2="65" stroke="#2563eb" stroke-width="4"/><circle cx="75" cy="150" r="5" fill="#2563eb"/><circle cx="285" cy="65" r="5" fill="#2563eb"/><text x="75" y="170" text-anchor="middle">${start}</text><text x="285" y="55" text-anchor="middle">${end}</text><text x="180" y="205" text-anchor="middle">${xLabel}</text>`);
+  svg(`<line x1="55" y1="180" x2="305" y2="180" stroke="#647181" stroke-width="2"/><line x1="55" y1="180" x2="55" y2="35" stroke="#647181" stroke-width="2"/><line x1="75" y1="150" x2="285" y2="65" stroke="#2563eb" stroke-width="4"/><circle cx="75" cy="150" r="5" fill="#2563eb"/><circle cx="285" cy="65" r="5" fill="#2563eb"/><text x="75" y="170" text-anchor="middle">${start}</text><text x="180" y="205" text-anchor="middle">${xLabel}</text>`);
+
+const linearTableVisual = (options) => {
+  const cells = options.map((option, index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = 35 + col * 165;
+    const y = 28 + row * 82;
+    return `
+      <g>
+        <text x="${x}" y="${y}" font-weight="700">${option.label}</text>
+        <rect x="${x + 25}" y="${y - 16}" width="122" height="52" rx="4" fill="#fff" stroke="#dce3de"/>
+        <line x1="${x + 25}" y1="${y + 10}" x2="${x + 147}" y2="${y + 10}" stroke="#dce3de"/>
+        <text x="${x + 34}" y="${y + 2}">x</text>
+        <text x="${x + 34}" y="${y + 28}">y</text>
+        <text x="${x + 56}" y="${y + 2}">${option.xs.join("  ")}</text>
+        <text x="${x + 56}" y="${y + 28}">${option.ys.join("  ")}</text>
+      </g>
+    `;
+  }).join("");
+  return svg(cells, 360, 200);
+};
 
 const question = ({
   topic,
@@ -1150,7 +1175,7 @@ const generators = {
     return question({
       topic: "Graphing: Word Problem Graph",
       difficulty,
-      prompt: `A graph starts at ${start} and increases by ${rate} each week. What value does the graph show after ${weeks} weeks?`,
+      prompt: `The graph starts at ${start} and increases by ${rate} each week. What value will it show after ${weeks} weeks?`,
       answer,
       answerValue: answer,
       visual: trendVisual(start, answer),
@@ -1288,15 +1313,16 @@ const generators = {
     const b = -(r + s);
     const c = r * s;
     const answer = Math.min(r, s);
+    const equation = `x^2 ${b < 0 ? "- " + Math.abs(b) : "+ " + b}x ${c < 0 ? "- " + Math.abs(c) : "+ " + c} = 0`;
     return question({
       topic: "Solving Quadratic Equations",
       difficulty,
-      prompt: `One solution of x^2 ${b < 0 ? "- " + Math.abs(b) : "+ " + b}x ${c < 0 ? "- " + Math.abs(c) : "+ " + c} = 0 is ${Math.max(r, s)}. What is the other solution?`,
+      prompt: `Solve ${equation}. What is the smaller solution?`,
       answer,
       answerValue: answer,
       steps: [
         {
-          text: `The equation factors as (x - ${r})(x - ${s}) = 0, so the two solutions are ${r} and ${s}. The other solution is ${answer}.`,
+          text: `The equation factors as (x - ${r})(x - ${s}) = 0, so the two solutions are ${r} and ${s}. The smaller solution is ${answer}.`,
           value: answer,
           expected: Math.min(r, s),
         },
@@ -1627,7 +1653,7 @@ const generators = {
     return question({
       topic: "Data Interpretation",
       difficulty,
-      prompt: `A graph shows enrollment rising from ${start} students to ${end} students. What is the percent increase? Round to the nearest tenth.`,
+      prompt: `The bar graph compares enrollment rising from ${start} students to ${end} students. What is the percent increase? Round to the nearest tenth.`,
       answer,
       answerValue: answer,
       validator: roundedValidator((change / start) * 100, 1),
@@ -1752,22 +1778,33 @@ const generators = {
   },
 
   "Linear vs Nonlinear Relationships"(difficulty) {
+    const slope = rand(2, 7);
+    const intercept = rand(1, 9);
+    const multiplier = rand(2, 3);
+    const squareShift = rand(0, 4);
+    const unevenStart = rand(3, 8);
+    const linear = [0, 1, 2, 3].map((x) => intercept + slope * x);
+    const exponential = [0, 1, 2, 3].map((x) => multiplier ** x);
+    const quadratic = [0, 1, 2, 3].map((x) => x * x + squareShift);
+    const uneven = [unevenStart, unevenStart + 2, unevenStart + 7, unevenStart + 9 + rand(2, 5)];
+    const tableOptions = [
+      { label: "A", xs: [0, 1, 2, 3], ys: linear, correct: true },
+      { label: "B", xs: [0, 1, 2, 3], ys: exponential, correct: false },
+      { label: "C", xs: [0, 1, 2, 3], ys: quadratic, correct: false },
+      { label: "D", xs: [0, 1, 2, 3], ys: uneven, correct: false },
+    ].sort(() => Math.random() - 0.5).map((option, index) => ({ ...option, label: String.fromCharCode(65 + index) }));
+    const correctOption = tableOptions.find((option) => option.correct);
     return question({
       topic: "Linear vs Nonlinear Relationships",
       difficulty,
       type: "multiple-choice",
       prompt: `Which table could represent a linear relationship?`,
-      answer: "x: 0, 1, 2, 3; y: 4, 7, 10, 13",
+      answer: correctOption.label,
       answerValue: 0,
-      validator: (student) => String(student).trim() === "x: 0, 1, 2, 3; y: 4, 7, 10, 13",
-      choices: [
-        "x: 0, 1, 2, 3; y: 4, 7, 10, 13",
-        "x: 0, 1, 2, 3; y: 1, 2, 4, 8",
-        "x: 0, 1, 2, 3; y: 0, 1, 4, 9",
-        "x: 0, 1, 2, 3; y: 5, 7, 12, 20",
-      ].sort(() => Math.random() - 0.5),
-      visual: svg(`<rect x="55" y="35" width="250" height="150" fill="#fff" stroke="#dce3de"/><text x="80" y="70">A: +3 each step</text><text x="80" y="100">B: doubles</text><text x="80" y="130">C: squares</text><text x="80" y="160">D: uneven changes</text>`),
-      steps: [{ text: `A linear relationship has a constant rate of change. The y-values 4, 7, 10, 13 increase by 3 each time, so x: 0, 1, 2, 3; y: 4, 7, 10, 13 is linear.` }],
+      validator: (student) => String(student).trim().toUpperCase() === correctOption.label,
+      choices: tableOptions.map((option) => option.label),
+      visual: linearTableVisual(tableOptions),
+      steps: [{ text: `A linear relationship has a constant rate of change. In table ${correctOption.label}, the y-values ${correctOption.ys.join(", ")} increase by ${slope} each time, so ${correctOption.label} is linear.` }],
       tip: "Linear tables have equal changes in y when x changes by equal amounts.",
     });
   },

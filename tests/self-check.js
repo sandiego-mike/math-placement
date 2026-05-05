@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { calculateResults, createSession, nextDiagnosticQuestion, submitDiagnosticAnswer } from "../src/engine.js";
+import { calculateResults, createPracticeState, createSession, nextDiagnosticQuestion, nextPracticeQuestion, submitDiagnosticAnswer } from "../src/engine.js";
 import { TOPICS, generateQuestion, parseStudentNumber } from "../src/questions.js";
 import { nextAnnualGrade } from "../src/storage.js";
 
@@ -58,6 +58,30 @@ function checkGeneratedQuestion(question) {
   }
 }
 
+function templateKey(question) {
+  const visualFingerprint = question.visual || question.visualChoices ? `|visual:${hashString(String(question.visual ?? question.visualChoices?.join("") ?? ""))}` : "";
+  return `${question.topic}|${String(question.prompt)
+    .replace(/Answer format:.*/gi, "")
+    .replace(/-?\d+(?:\.\d+)?\s*\/\s*-?\d+(?:\.\d+)?/g, "#/#")
+    .replace(/-?\d+(?:\.\d+)?%?/g, "#")
+    .replace(/\b[A-D]\b/g, "L")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()}${visualFingerprint}`;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash.toString(36);
+}
+
+function svgTextContent(svg) {
+  return [...String(svg).matchAll(/<text[^>]*>(.*?)<\/text>/g)].map((match) => match[1].trim());
+}
+
 let totalMultipleChoice = 0;
 let totalFillBlank = 0;
 
@@ -104,6 +128,42 @@ for (let index = 0; index < 12; index += 1) {
 assert.equal(grade5Topics.includes("Negative Numbers"), false, "grade 5 test does not use negative numbers as normal content");
 assert.equal(grade5Topics.includes("Square Roots"), false, "grade 5 test does not use square roots as normal content");
 assert.equal(grade5Topics.slice(0, 3).some((topic) => ["Fractions", "Decimals", "Word Problems"].includes(topic)), true, "grade 5 starts with grade-level probes");
+
+const graphWord = generateQuestion("Graphing: Word Problem Graph", 1);
+assert.equal(svgTextContent(graphWord.visual).includes(String(graphWord.answer)), false, "word-problem graph does not display the computed answer");
+assert.equal(/a graph shows/i.test(graphWord.prompt), false, "graphing prompt points to the rendered graph without using text-only wording");
+
+const linearRelationshipSamples = new Set();
+for (let index = 0; index < 8; index += 1) {
+  const linearQuestion = generateQuestion("Linear vs Nonlinear Relationships", 1);
+  checkGeneratedQuestion(linearQuestion);
+  assert.equal(/\+3 each step|doubles|squares|uneven changes/i.test(linearQuestion.visual), false, "linear relationship visual does not give away the reasoning");
+  linearRelationshipSamples.add(linearQuestion.visual);
+}
+assert.ok(linearRelationshipSamples.size > 1, "linear relationship tables are randomized");
+
+const duplicateGuard = createSession({ name: "Duplicate Guard", grade: "10" });
+const diagnosticKeys = [];
+for (let index = 0; index < 12; index += 1) {
+  const question = nextDiagnosticQuestion(duplicateGuard);
+  diagnosticKeys.push(templateKey(question));
+  submitDiagnosticAnswer(duplicateGuard, question.answer);
+}
+for (const key of new Set(diagnosticKeys)) {
+  assert.ok(diagnosticKeys.filter((item) => item === key).length <= 2, "diagnostic avoids overusing the same question template");
+}
+
+const practice = createPracticeState({
+  reviewTopics: ["Linear vs Nonlinear Relationships"],
+  topicResults: [{ topic: "Linear vs Nonlinear Relationships", percent: 60 }],
+}, { goal: 6 });
+const practiceKeys = [];
+for (let index = 0; index < 4; index += 1) {
+  const question = nextPracticeQuestion(practice);
+  practiceKeys.push(templateKey(question));
+  practice.attempts.push({ ...question, correct: true });
+}
+assert.equal(new Set(practiceKeys).size, practiceKeys.length, "practice avoids immediate repeated templates");
 
 const perfect = createSession({ name: "Perfect Student", grade: "10" });
 while (!perfect.completedAt) {

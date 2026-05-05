@@ -45,7 +45,7 @@ export function nextDiagnosticQuestion(session) {
   const topic = chooseNextTopic(session);
   const topicStats = session.stats[topic];
   const difficulty = session.challengeMode || session.acceleration || (session.correctStreak ?? 0) >= 3 ? 2 : topicStats.difficulty;
-  const question = generateQuestion(topic, difficulty);
+  const question = generateUniqueQuestion(topic, difficulty, session.history, { maxTemplateRepeats: 2 });
   session.currentQuestion = question;
   return question;
 }
@@ -517,7 +517,7 @@ export function createPracticeState(results, options = {}) {
 export function nextPracticeQuestion(practiceState) {
   const topic = practiceState.topics[practiceState.index % practiceState.topics.length];
   const difficulty = practiceState.difficultyByTopic[topic] ?? 0;
-  const question = generateQuestion(topic, difficulty);
+  const question = generateUniqueQuestion(topic, difficulty, practiceState.attempts, { maxTemplateRepeats: 1, recentWindow: 8 });
   practiceState.currentQuestion = question;
   practiceState.index += 1;
   return question;
@@ -563,6 +563,60 @@ export function submitPracticeAnswer(practiceState, rawAnswer) {
   };
   practiceState.attempts.push(attempt);
   return attempt;
+}
+
+function generateUniqueQuestion(topic, difficulty, history = [], options = {}) {
+  const maxTemplateRepeats = options.maxTemplateRepeats ?? 2;
+  const recentWindow = options.recentWindow ?? 12;
+  const recent = history.slice(-recentWindow);
+  let fallback = null;
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const question = generateQuestion(topic, difficulty);
+    fallback ??= question;
+    const key = questionTemplateKey(question);
+    const exactRepeat = recent.some((item) => questionExactKey(item) === questionExactKey(question));
+    const recentTemplateRepeat = recent.some((item) => questionTemplateKey(item) === key);
+    const totalTemplateCount = history.filter((item) => questionTemplateKey(item) === key).length;
+
+    if (exactRepeat) continue;
+    if (recentTemplateRepeat && maxTemplateRepeats <= 1) continue;
+    if (totalTemplateCount >= maxTemplateRepeats) continue;
+    return question;
+  }
+
+  return fallback ?? generateQuestion(topic, difficulty);
+}
+
+function questionExactKey(question) {
+  return hashString(JSON.stringify({
+    topic: question.topic,
+    prompt: question.prompt,
+    answer: question.answer,
+    choices: question.choices,
+    visual: question.visual,
+    visualChoices: question.visualChoices,
+  }));
+}
+
+function questionTemplateKey(question) {
+  const visualFingerprint = question.visual || question.visualChoices ? `|visual:${hashString(String(question.visual ?? question.visualChoices?.join("") ?? ""))}` : "";
+  return `${question.topic}|${String(question.prompt ?? "")
+    .replace(/Answer format:.*/gi, "")
+    .replace(/-?\d+(?:\.\d+)?\s*\/\s*-?\d+(?:\.\d+)?/g, "#/#")
+    .replace(/-?\d+(?:\.\d+)?%?/g, "#")
+    .replace(/\b[A-D]\b/g, "L")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()}${visualFingerprint}`;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash.toString(36);
 }
 
 export function serializeSession(session) {
