@@ -63,6 +63,7 @@ export function upsertProfile({ name, grade }) {
       tests: [],
       practice: [],
       worksheets: [],
+      finalExams: [],
       topicProgress: {},
       learningPath: [],
       lastActiveAt: new Date().toISOString(),
@@ -132,6 +133,7 @@ export function importStudentProfiles(students) {
       tests: [],
       practice: [],
       worksheets: [],
+      finalExams: [],
       topicProgress: {},
       learningPath: [],
       lastActiveAt: new Date().toISOString(),
@@ -311,6 +313,21 @@ export function scoreWorksheet(profileId, worksheetId, score) {
   });
 }
 
+export function recordFinalExam(profileId, examRecord) {
+  return updateProfile(profileId, (profile) => {
+    profile.finalExams = profile.finalExams ?? [];
+    const existing = profile.finalExams.findIndex((e) => e.id === examRecord.id);
+    if (existing >= 0) {
+      profile.finalExams[existing] = examRecord;
+    } else {
+      profile.finalExams.unshift(examRecord);
+    }
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = "Completed final exam";
+    return profile;
+  });
+}
+
 export function resetWorksheetHistory(profileId) {
   return updateProfile(profileId, (profile) => {
     profile.worksheets = [];
@@ -358,6 +375,7 @@ export function importProfilesData(payload) {
     if (resetAt) existing.worksheetResetAt = resetAt;
     const afterReset = (sheets) => resetAt ? sheets.filter((w) => new Date(w.date) > new Date(resetAt)) : sheets;
     existing.worksheets = mergeById(afterReset(existing.worksheets), afterReset(cleanProfile.worksheets)).sort((a, b) => new Date(b.date) - new Date(a.date));
+    existing.finalExams = mergeById(existing.finalExams ?? [], cleanProfile.finalExams ?? []).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
     existing.topicProgress = mergeTopicProgressObjects(existing.topicProgress, cleanProfile.topicProgress);
     existing.learningPath = buildLearningPath(existing);
     existing.notes = existing.notes || cleanProfile.notes || "";
@@ -389,6 +407,7 @@ function normalizeImportedProfile(profile) {
     avatar: profile.avatar ?? null,
     leaderboardVisible: profile.leaderboardVisible ?? true,
     worksheetResetAt: profile.worksheetResetAt ?? null,
+    finalExams: Array.isArray(profile.finalExams) ? profile.finalExams : [],
   };
   normalized.learningPath = normalized.learningPath.length ? normalized.learningPath : buildLearningPath(normalized);
   return normalized;
@@ -496,6 +515,7 @@ export function importHistoricalReports(reports) {
         tests: [],
         practice: [],
         worksheets: [],
+        finalExams: [],
         topicProgress: {},
         learningPath: [],
       };

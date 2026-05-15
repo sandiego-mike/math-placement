@@ -1003,3 +1003,113 @@ select {
     flex: 1 1 170px;
   }
 }
+
+/* ── Final Exam styles ───────────────────────────────────────────────────── */
+
+.exam-section-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: var(--bg-soft, #f8fafc);
+  border-left: 3px solid var(--blue);
+  padding: 8px 14px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.exam-grade-hero {
+  margin: 16px 0 20px;
+}
+
+.exam-grade-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  background: #fff;
+  border: 2px solid var(--border);
+  border-left: 6px solid currentColor;
+  border-radius: 12px;
+}
+
+.exam-grade-letter {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1;
+  min-width: 56px;
+  text-align: center;
+}
+
+.exam-grade-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exam-pending-banner {
+  background: #fffbeb;
+  border: 1.5px solid #fcd34d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #92400e;
+  margin-bottom: 16px;
+}
+
+.exam-section-divider {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--blue);
+  margin: 24px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+}
+
+.exam-question-card {
+  margin-bottom: 12px;
+}
+
+.exam-q-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.exam-q-num {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.exam-grade-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 600px) {
+  .exam-grade-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .exam-grade-letter {
+    font-size: 2.8rem;
+  }
+
+  .exam-grade-buttons {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

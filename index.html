@@ -193,6 +193,14 @@
             </section>
           </div>
 
+          <section class="report-panel">
+            <h3>Final Exam Records</h3>
+            <div id="finalExamRecords" class="topic-list"></div>
+            <div class="actions wrap" style="margin-top:12px">
+              <button class="primary" id="startFinalExam" type="button">Take Final Exam — IM2 Semester 2</button>
+            </div>
+          </section>
+
           <div class="actions wrap">
             <button class="primary" id="startFromDashboard" type="button">Start Test</button>
             <button class="secondary" id="startMiniTest" type="button">Daily Mini Test</button>
@@ -338,6 +346,70 @@
             <button class="secondary hidden" id="startChallengeMode" type="button">Challenge Mode</button>
             <button class="ghost" type="button" data-exit-profile>Exit Profile</button>
             <button class="primary" id="newTest" type="button">Start New Test</button>
+          </div>
+        </section>
+
+        <!-- ── Final Exam: Taking Screen ── -->
+        <section class="screen" id="finalExamScreen" aria-labelledby="finalExamHeading">
+          <div class="test-header">
+            <div>
+              <p class="eyebrow" id="finalExamMeta">Question 1 of 30</p>
+              <h2 id="finalExamHeading">Integrated Math 2 Semester 2 Final Exam</h2>
+            </div>
+            <div class="test-tools">
+              <button class="secondary small-button hidden" type="button" data-back-admin>Back to Admin</button>
+              <button class="ghost small-button" type="button" data-exit-profile>Exit Profile</button>
+            </div>
+          </div>
+
+          <div class="progress-track" aria-label="Exam progress">
+            <div class="progress-fill" id="finalExamProgress"></div>
+          </div>
+
+          <div class="exam-section-label" id="finalExamSectionLabel"></div>
+
+          <article class="question-panel">
+            <p class="eyebrow" id="finalExamQuestionTopic" style="margin-bottom:6px"></p>
+            <p class="question-text" id="finalExamQuestionText"></p>
+            <div class="answer-area" id="finalExamAnswerArea"></div>
+            <p class="hint-text" id="finalExamFeedbackLine"></p>
+          </article>
+
+          <div class="actions">
+            <button class="secondary" id="submitFinalExamAnswer" type="button">Submit Answer</button>
+            <button class="primary hidden" id="nextFinalExamQuestion" type="button">Next</button>
+          </div>
+        </section>
+
+        <!-- ── Final Exam: Grading + Results Screen ── -->
+        <section class="screen" id="finalExamResultsScreen" aria-labelledby="finalExamResultsHeading">
+          <div class="results-hero">
+            <div>
+              <p class="eyebrow">Final Exam Results</p>
+              <h2 id="finalExamResultsHeading">Integrated Math 2 Semester 2</h2>
+              <p id="finalExamResultsStudent"></p>
+            </div>
+            <div class="score-ring" id="finalExamScoreRing">
+              <strong id="finalExamScoreDisplay">--</strong>
+              <span>score</span>
+            </div>
+          </div>
+
+          <div id="finalExamGradeHero" class="exam-grade-hero"></div>
+
+          <div id="finalExamPendingBanner" class="exam-pending-banner hidden">
+            <strong>Parent grading required</strong> — Short-answer and extended-response questions are shown below.
+            Mark each one correct or incorrect, then save the record.
+          </div>
+
+          <div id="finalExamGradingArea"></div>
+
+          <div class="actions wrap" style="margin-top:24px">
+            <button class="primary" id="saveFinalExamRecord" type="button">Save Exam Record</button>
+            <button class="secondary" id="exportFinalExamPdf" type="button">Export PDF</button>
+            <button class="ghost" id="backToDashboardFromExam" type="button">Student Dashboard</button>
+            <button class="secondary hidden" type="button" data-back-admin>Back to Admin</button>
+            <button class="ghost" type="button" data-exit-profile>Exit Profile</button>
           </div>
         </section>
 

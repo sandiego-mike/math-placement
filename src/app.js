@@ -20,6 +20,7 @@ import {
   importProfilesData,
   importStudentProfiles,
   recordPractice,
+  recordFinalExam,
   recordTest,
   recordWorksheet,
   resetWorksheetHistory,
@@ -32,6 +33,20 @@ import {
 } from "./storage.js";
 import { exportResultsPdf } from "./report.js";
 import { buildDailyWorksheet, exportWorksheetPdf } from "./worksheet.js";
+import {
+  EXAM_META,
+  EXAM_SECTIONS,
+  getAllExamQuestions,
+  createFinalExamState,
+  getCurrentExamQuestion,
+  submitExamAnswer,
+  parentGradeQuestion,
+  parentSetPoints,
+  calculateExamScore,
+  getLetterGrade,
+  buildExamRecord,
+  exportFinalExamPdf,
+} from "./finalExam.js";
 import { importedReports } from "./importedReports.js";
 import {
   getSupabaseConfig,
@@ -50,6 +65,7 @@ const seededStudentProfiles = [
   { name: "Hannah Arias", grade: "7", notes: "7th grade going to 8th", aliases: ["Hannah"] },
   { name: "Bella Arias", grade: "5", notes: "5th grade", aliases: ["Bella"] },
   { name: "Greyson Arias", grade: "7", notes: "7th grade", aliases: ["Greyson"] },
+  { name: "Leilani DeVries", grade: "10", notes: "10th grade — Integrated Math 2", aliases: ["Leilani"] },
 ];
 
 const playfulBoys = new Set(["liam devries", "austin arias", "greyson arias", "hunter arias"]);
@@ -168,12 +184,37 @@ const elements = {
   leaderboardSection: $("#leaderboardSection"),
   leaderboardGrid: $("#leaderboardGrid"),
   dashboardAvatar: $("#dashboardAvatar"),
+  // Final exam
+  startFinalExam: $("#startFinalExam"),
+  finalExamRecords: $("#finalExamRecords"),
+  finalExamScreen: $("#finalExamScreen"),
+  finalExamResultsScreen: $("#finalExamResultsScreen"),
+  finalExamMeta: $("#finalExamMeta"),
+  finalExamHeading: $("#finalExamHeading"),
+  finalExamProgress: $("#finalExamProgress"),
+  finalExamSectionLabel: $("#finalExamSectionLabel"),
+  finalExamQuestionTopic: $("#finalExamQuestionTopic"),
+  finalExamQuestionText: $("#finalExamQuestionText"),
+  finalExamAnswerArea: $("#finalExamAnswerArea"),
+  finalExamFeedbackLine: $("#finalExamFeedbackLine"),
+  submitFinalExamAnswer: $("#submitFinalExamAnswer"),
+  nextFinalExamQuestion: $("#nextFinalExamQuestion"),
+  finalExamResultsStudent: $("#finalExamResultsStudent"),
+  finalExamScoreRing: $("#finalExamScoreRing"),
+  finalExamScoreDisplay: $("#finalExamScoreDisplay"),
+  finalExamGradeHero: $("#finalExamGradeHero"),
+  finalExamPendingBanner: $("#finalExamPendingBanner"),
+  finalExamGradingArea: $("#finalExamGradingArea"),
+  saveFinalExamRecord: $("#saveFinalExamRecord"),
+  exportFinalExamPdf: $("#exportFinalExamPdf"),
+  backToDashboardFromExam: $("#backToDashboardFromExam"),
 };
 
 let session = null;
 let results = null;
 let practiceState = null;
 let activeProfile = null;
+let finalExamState = null;
 let adminSessionActive = sessionStorage.getItem("math-admin-session") === "1";
 let openedFromAdmin = false;
 
@@ -512,6 +553,247 @@ elements.adminStudents.addEventListener("change", async (event) => {
   }
 });
 
+// ── Final Exam: event listeners ──────────────────────────────────────────────
+
+elements.startFinalExam.addEventListener("click", () => {
+  if (!activeProfile) return;
+  if (activeProfile.finalExams?.length) {
+    const last = activeProfile.finalExams[0];
+    if (!confirm(`A completed exam record already exists (${new Date(last.completedAt).toLocaleDateString()}, ${last.letterGrade} — ${last.percent}%). Start a new attempt?`)) return;
+  }
+  activeProfile = touchProfile(activeProfile.id, "Started final exam") ?? activeProfile;
+  queueProfileSync(activeProfile);
+  finalExamState = createFinalExamState(activeProfile);
+  showScreen("finalExam");
+  renderFinalExamQuestion();
+});
+
+elements.submitFinalExamAnswer.addEventListener("click", () => {
+  const question = getCurrentExamQuestion(finalExamState);
+  if (!question) return;
+  const answer = getAnswer(elements.finalExamAnswerArea, question.type === "multiple-choice" ? "multiple-choice" : "fill-blank");
+  if (!answer.trim()) {
+    elements.finalExamFeedbackLine.textContent = "Enter or choose an answer before submitting.";
+    elements.finalExamFeedbackLine.style.color = "var(--red)";
+    return;
+  }
+
+  const outcome = submitExamAnswer(finalExamState, answer);
+  lockAnswerArea(elements.finalExamAnswerArea);
+
+  if (question.type === "multiple-choice") {
+    const choiceLabels = ["A", "B", "C", "D"];
+    const chosenIndex = choiceLabels.indexOf(answer.toUpperCase());
+    const chosenText = question.choices[chosenIndex] ?? answer;
+    elements.finalExamFeedbackLine.textContent = outcome.correct
+      ? `Correct. ${question.explanation}`
+      : `Incorrect. Correct answer: ${question.answer}) ${question.answerText}. ${question.explanation}`;
+    elements.finalExamFeedbackLine.style.color = outcome.correct ? "var(--green)" : "var(--red)";
+  } else {
+    elements.finalExamFeedbackLine.textContent = "Answer recorded. Your response will be reviewed during grading.";
+    elements.finalExamFeedbackLine.style.color = "var(--muted)";
+  }
+
+  elements.submitFinalExamAnswer.classList.add("hidden");
+  elements.nextFinalExamQuestion.classList.remove("hidden");
+  elements.nextFinalExamQuestion.textContent = outcome.isLast ? "View Results" : "Next Question";
+});
+
+elements.nextFinalExamQuestion.addEventListener("click", () => {
+  if (finalExamState.phase !== "taking") {
+    renderFinalExamResults();
+    showScreen("finalExamResults");
+  } else {
+    renderFinalExamQuestion();
+  }
+});
+
+elements.saveFinalExamRecord.addEventListener("click", () => {
+  if (!activeProfile || !finalExamState) return;
+  const record = buildExamRecord(finalExamState);
+  activeProfile = recordFinalExam(activeProfile.id, record);
+  queueProfileSync(activeProfile);
+  renderDashboard();
+  elements.saveFinalExamRecord.textContent = "Record Saved";
+  elements.saveFinalExamRecord.disabled = true;
+});
+
+elements.exportFinalExamPdf.addEventListener("click", async () => {
+  if (!activeProfile || !finalExamState) return;
+  const btn = elements.exportFinalExamPdf;
+  btn.disabled = true;
+  try {
+    const record = buildExamRecord(finalExamState);
+    await exportFinalExamPdf(activeProfile, finalExamState, record);
+  } catch (err) {
+    console.error("Final exam PDF failed:", err);
+    alert("Could not generate the PDF. Try again or use a different browser.");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+elements.backToDashboardFromExam.addEventListener("click", () => {
+  renderDashboard();
+  showScreen("dashboard");
+});
+
+// Delegated: parent grading buttons in finalExamGradingArea
+elements.finalExamGradingArea.addEventListener("click", (event) => {
+  const markBtn = event.target.closest("[data-mark-question]");
+  if (markBtn && finalExamState) {
+    const { markQuestion, markCorrect } = markBtn.dataset;
+    parentGradeQuestion(finalExamState, markQuestion, markCorrect === "true");
+    renderFinalExamResults();
+    return;
+  }
+});
+
+elements.finalExamGradingArea.addEventListener("change", (event) => {
+  const pointsInput = event.target.closest("[data-points-question]");
+  if (pointsInput && finalExamState) {
+    parentSetPoints(finalExamState, pointsInput.dataset.pointsQuestion, pointsInput.value);
+    renderFinalExamResults();
+  }
+});
+
+function renderFinalExamQuestion() {
+  const state = finalExamState;
+  const question = getCurrentExamQuestion(state);
+  if (!question) return;
+
+  const total = state.allQuestions.length;
+  const num = state.currentIndex + 1;
+  const section = EXAM_SECTIONS.find((s) => s.id === question.sectionId);
+
+  elements.finalExamMeta.textContent = `Question ${num} of ${total}`;
+  elements.finalExamProgress.style.width = `${((num - 1) / total) * 100}%`;
+  elements.finalExamSectionLabel.textContent = section ? `${section.title} — ${section.instructions}` : "";
+  elements.finalExamQuestionTopic.textContent = question.topic;
+  elements.finalExamQuestionText.textContent = question.text;
+  elements.finalExamFeedbackLine.textContent = "";
+  elements.submitFinalExamAnswer.classList.remove("hidden");
+  elements.nextFinalExamQuestion.classList.add("hidden");
+
+  // Render answer area
+  elements.finalExamAnswerArea.innerHTML = "";
+  if (question.type === "multiple-choice") {
+    question.choices.forEach((choice, i) => {
+      const label = document.createElement("label");
+      label.className = "choice";
+      label.innerHTML = `
+        <input type="radio" name="answer" value="${escapeHtml(String.fromCharCode(65 + i))}" />
+        <span>${String.fromCharCode(65 + i)}. ${escapeHtml(choice)}</span>
+      `;
+      elements.finalExamAnswerArea.appendChild(label);
+    });
+  } else {
+    const isMultiLine = question.type === "extended-response";
+    if (isMultiLine) {
+      const lbl = document.createElement("label");
+      lbl.innerHTML = `Answer<br /><textarea name="answer" rows="6" placeholder="Show all work and explain your reasoning…" style="width:100%;font-family:inherit;font-size:1rem;padding:10px;border:2px solid var(--border);border-radius:8px;margin-top:6px;resize:vertical"></textarea>`;
+      elements.finalExamAnswerArea.appendChild(lbl);
+    } else {
+      const lbl = document.createElement("label");
+      lbl.innerHTML = `Answer<input inputmode="text" autocomplete="off" name="answer" placeholder="Type your answer" />`;
+      elements.finalExamAnswerArea.appendChild(lbl);
+    }
+  }
+}
+
+function renderFinalExamResults() {
+  const state = finalExamState;
+  if (!state) return;
+
+  const score = calculateExamScore(state);
+  const gradeColors = { A: "#16a34a", B: "#2563eb", C: "#d97706", D: "#ea580c", F: "#dc2626" };
+  const gColor = gradeColors[score.letterGrade] ?? "#374151";
+
+  elements.finalExamResultsStudent.textContent = `${state.studentName} • Grade ${state.grade} • Completed ${new Date(state.completedAt ?? Date.now()).toLocaleDateString()}`;
+  elements.finalExamScoreDisplay.textContent = `${score.percent}%`;
+  elements.finalExamScoreRing.style.setProperty("--ring-color", gColor);
+
+  // Grade hero
+  elements.finalExamGradeHero.innerHTML = `
+    <div class="exam-grade-card" style="border-left-color:${gColor}">
+      <div class="exam-grade-letter" style="color:${gColor}">${score.letterGrade}</div>
+      <div class="exam-grade-details">
+        <strong style="font-size:1.4rem">${score.pointsEarned} / ${score.totalPoints} points</strong>
+        <div style="color:var(--muted);margin-top:4px">${score.percent}% — ${gradeDescriptorText(score.letterGrade)}</div>
+      </div>
+    </div>
+  `;
+
+  // Pending banner
+  const hasPending = score.pendingCount > 0;
+  elements.finalExamPendingBanner.classList.toggle("hidden", !hasPending);
+  if (hasPending) {
+    elements.finalExamPendingBanner.innerHTML = `
+      <strong>Parent grading required</strong> — ${score.pendingCount} question${score.pendingCount === 1 ? "" : "s"} still need${score.pendingCount === 1 ? "s" : ""} to be marked.
+      Review each one below and click <strong>Correct</strong> or <strong>Incorrect</strong>.
+    `;
+  }
+
+  // Save button state
+  elements.saveFinalExamRecord.disabled = false;
+  elements.saveFinalExamRecord.textContent = "Save Exam Record";
+
+  // Grading area — all questions
+  let html = "";
+  const allQuestions = state.allQuestions;
+  let lastSectionId = null;
+
+  allQuestions.forEach((question, idx) => {
+    if (question.sectionId !== lastSectionId) {
+      lastSectionId = question.sectionId;
+      const section = EXAM_SECTIONS.find((s) => s.id === question.sectionId);
+      html += `<h3 class="exam-section-divider">${escapeHtml(section?.title ?? question.sectionId)}</h3>`;
+    }
+
+    const ansRecord = state.answers.find((a) => a.questionId === question.id);
+    const studentAnswer = ansRecord?.studentAnswer ?? "(not answered)";
+    const correct = ansRecord?.correct;
+    const ptsEarned = ansRecord?.pointsEarned;
+    const ptsMax = question.pointsEach;
+    const isAuto = question.type === "multiple-choice";
+    const isGraded = ansRecord?.parentGraded;
+
+    const correctMark = correct === true ? `<span class="answer-mark right">✔ Correct</span>` : correct === false ? `<span class="answer-mark wrong">✘ Incorrect</span>` : `<span class="answer-mark" style="background:#f1f5f9;color:#64748b">Pending</span>`;
+
+    const parentButtons = !isAuto ? `
+      <div class="exam-grade-buttons">
+        <button class="secondary small-button" type="button" data-mark-question="${escapeHtml(question.id)}" data-mark-correct="true">✔ Mark Correct (${ptsMax} pts)</button>
+        <button class="ghost small-button" type="button" data-mark-question="${escapeHtml(question.id)}" data-mark-correct="false">✘ Mark Incorrect (0 pts)</button>
+        <label style="font-size:0.85rem;color:var(--muted)">
+          Or enter partial credit:
+          <input type="number" min="0" max="${ptsMax}" value="${ptsEarned ?? ""}" placeholder="0–${ptsMax}" data-points-question="${escapeHtml(question.id)}" style="width:60px;margin-left:6px" />
+          / ${ptsMax} pts
+        </label>
+      </div>
+    ` : "";
+
+    html += `
+      <article class="review-card exam-question-card">
+        <div class="exam-q-header">
+          <span class="exam-q-num">Q${idx + 1} — ${escapeHtml(question.topic)}</span>
+          <span>${correctMark} ${ptsEarned !== null && ptsEarned !== undefined ? `<strong>${ptsEarned}/${ptsMax} pts</strong>` : `<span style="color:var(--muted)">—/${ptsMax} pts</span>`}</span>
+        </div>
+        <p class="question-text" style="font-size:1rem;margin:8px 0">${escapeHtml(question.text)}</p>
+        <p><strong>Student answer:</strong> ${escapeHtml(studentAnswer)}</p>
+        ${!isAuto || correct === false ? `<p style="color:#16a34a"><strong>Correct answer:</strong> ${escapeHtml(question.answer)}</p>` : ""}
+        ${correct === false || (!isAuto && !isGraded) ? `<p style="color:var(--muted);font-size:0.9rem"><em>${escapeHtml(question.explanation)}</em></p>` : ""}
+        ${parentButtons}
+      </article>
+    `;
+  });
+
+  elements.finalExamGradingArea.innerHTML = html;
+}
+
+function gradeDescriptorText(letter) {
+  return { A: "Excellent", B: "Above Average", C: "Satisfactory", D: "Below Average", F: "Needs Improvement" }[letter] ?? "";
+}
+
 function restartTest() {
   if (!confirm("Restart this test? This will clear the current question, score, adaptive level, missed questions, practice recommendations, and saved session.")) return;
   resetAll();
@@ -522,6 +804,7 @@ function resetAll() {
   session = null;
   results = null;
   practiceState = null;
+  finalExamState = null;
   if (activeProfile) {
     renderDashboard();
     showScreen("dashboard");
@@ -557,6 +840,7 @@ function exitProfile() {
   session = null;
   results = null;
   practiceState = null;
+  finalExamState = null;
   activeProfile = null;
   openedFromAdmin = false;
   elements.studentForm.reset();
@@ -573,6 +857,7 @@ function backToAdmin() {
   session = null;
   results = null;
   practiceState = null;
+  finalExamState = null;
   activeProfile = null;
   openedFromAdmin = false;
   renderAdminDashboard();
@@ -587,6 +872,8 @@ function showScreen(name) {
     test: elements.testScreen,
     results: elements.resultsScreen,
     practice: elements.practiceScreen,
+    finalExam: elements.finalExamScreen,
+    finalExamResults: elements.finalExamResultsScreen,
   };
   Object.values(screens).forEach((screen) => screen.classList.remove("active"));
   screens[name].classList.add("active");
@@ -677,6 +964,7 @@ function renderDashboard() {
   elements.topicProgressDashboard.innerHTML = renderTopicProgress(activeProfile);
   elements.teacherReport.innerHTML = renderTeacherReport(activeProfile);
   elements.worksheetHistory.innerHTML = renderWorksheetHistory(activeProfile);
+  elements.finalExamRecords.innerHTML = renderFinalExamHistory(activeProfile);
 }
 
 function renderPathItem(item) {
@@ -762,6 +1050,33 @@ function renderWorksheetHistory(profile) {
         <div class="worksheet-score">
           <input type="number" min="0" max="100" placeholder="${worksheet.completed ? "Update score" : "Score %"}" data-worksheet-score="${worksheet.id}" />
           <button class="secondary small-button" type="button" data-score-worksheet="${worksheet.id}">Save Score</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderFinalExamHistory(profile) {
+  const exams = profile.finalExams ?? [];
+  if (!exams.length) {
+    return `<div class="review-card"><p>No final exam taken yet. Click <strong>Take Final Exam</strong> below to begin.</p></div>`;
+  }
+  const gradeColors = { A: "#16a34a", B: "#2563eb", C: "#d97706", D: "#ea580c", F: "#dc2626" };
+  return exams.slice(0, 5).map((exam) => {
+    const gc = gradeColors[exam.letterGrade] ?? "#374151";
+    return `
+      <div class="review-card">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+          <span style="font-size:2.2rem;font-weight:800;line-height:1;color:${gc}">${exam.letterGrade}</span>
+          <div>
+            <strong style="font-size:1rem">${escapeHtml(exam.title)}</strong>
+            <div style="font-size:0.84rem;color:var(--muted);margin-top:2px">${new Date(exam.completedAt).toLocaleDateString()} • ${exam.pointsEarned}/${exam.totalPoints} pts • ${exam.percent}%</div>
+            ${!exam.graded ? `<div style="font-size:0.8rem;color:#d97706;margin-top:2px">Grading incomplete — some questions pending parent review</div>` : ""}
+          </div>
+        </div>
+        <div class="actions wrap" style="margin:0">
+          <button class="secondary small-button" type="button" data-view-exam="${escapeHtml(exam.id)}">View &amp; Grade</button>
+          <button class="secondary small-button" type="button" data-export-exam="${escapeHtml(exam.id)}">Export PDF</button>
         </div>
       </div>
     `;
@@ -926,12 +1241,14 @@ function getAnswer(container, type) {
   if (type === "multiple-choice") {
     return container.querySelector("input:checked")?.value ?? "";
   }
+  const textarea = container.querySelector("textarea[name='answer']");
+  if (textarea) return textarea.value.trim();
   return container.querySelector("input[name='answer']")?.value.trim() ?? "";
 }
 
 function lockAnswerArea(container) {
-  container.querySelectorAll("input").forEach((input) => {
-    input.disabled = true;
+  container.querySelectorAll("input, textarea").forEach((el) => {
+    el.disabled = true;
   });
 }
 
@@ -1141,6 +1458,39 @@ document.addEventListener("click", (event) => {
     queueProfileSync(updated);
     renderAdminDashboard();
     if (activeProfile) renderDashboard();
+    return;
+  }
+
+  const viewExam = event.target.closest("[data-view-exam]");
+  if (viewExam && activeProfile) {
+    const examId = viewExam.dataset.viewExam;
+    const record = (activeProfile.finalExams ?? []).find((e) => e.id === examId);
+    if (!record) return;
+    // Rebuild state from saved record so the grading screen works
+    finalExamState = createFinalExamState(activeProfile);
+    finalExamState.answers = structuredClone(record.answers);
+    finalExamState.completedAt = record.completedAt;
+    finalExamState.startedAt = record.startedAt;
+    finalExamState.phase = "grading";
+    finalExamState.currentIndex = finalExamState.allQuestions.length - 1;
+    renderFinalExamResults();
+    showScreen("finalExamResults");
+    return;
+  }
+
+  const exportExamBtn = event.target.closest("[data-export-exam]");
+  if (exportExamBtn && activeProfile) {
+    const examId = exportExamBtn.dataset.exportExam;
+    const record = (activeProfile.finalExams ?? []).find((e) => e.id === examId);
+    if (!record) return;
+    const exportState = createFinalExamState(activeProfile);
+    exportState.answers = structuredClone(record.answers);
+    exportState.completedAt = record.completedAt;
+    exportState.startedAt = record.startedAt;
+    exportFinalExamPdf(activeProfile, exportState, record).catch((err) => {
+      console.error("Final exam PDF failed:", err);
+      alert("Could not generate the PDF. Try again or use a different browser.");
+    });
     return;
   }
 
