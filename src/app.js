@@ -22,6 +22,7 @@ import {
   recordPractice,
   recordFinalExam,
   recordTest,
+  removeLatestTest,
   recordWorksheet,
   resetWorksheetHistory,
   scoreWorksheet,
@@ -930,6 +931,7 @@ function renderAdminStudentCard(profile) {
         <button class="secondary small-button" type="button" data-export-profile="${profile.id}">Export Results</button>
         <button class="ghost small-button leaderboard-toggle" type="button" data-toggle-leaderboard="${profile.id}">${visible ? "Hide from Highlights" : "Show in Highlights"}</button>
         <button class="ghost small-button" type="button" data-reset-worksheets="${profile.id}">Reset Worksheet History</button>
+        ${latest ? `<button class="ghost small-button" type="button" data-remove-latest-test="${profile.id}">Remove Latest Test</button>` : ""}
       </div>
     </article>
   `;
@@ -1445,6 +1447,21 @@ document.addEventListener("click", (event) => {
     if (!profile) return;
     downloadJson(exportProfilesData([profile.id]), `${slugify(profile.name)}-math-placement-results.json`);
     elements.adminTransferMessage.textContent = `Exported ${profile.name}'s results.`;
+    return;
+  }
+
+  const removeLatestTestBtn = event.target.closest("[data-remove-latest-test]");
+  if (removeLatestTestBtn) {
+    const profile = getProfile(removeLatestTestBtn.dataset.removeLatestTest);
+    if (!profile || !profile.tests.length) return;
+    const latest = profile.tests[0];
+    const dateStr = new Date(latest.date).toLocaleDateString();
+    if (!confirm(`Remove ${profile.name}'s latest test (${dateStr}, ${latest.score}%)? This cannot be undone.`)) return;
+    const updated = removeLatestTest(profile.id);
+    if (activeProfile?.id === updated?.id) activeProfile = updated;
+    queueProfileSync(updated);
+    renderAdminDashboard();
+    if (activeProfile) renderDashboard();
     return;
   }
 

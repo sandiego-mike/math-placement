@@ -313,6 +313,17 @@ export function scoreWorksheet(profileId, worksheetId, score) {
   });
 }
 
+export function removeLatestTest(profileId) {
+  return updateProfile(profileId, (profile) => {
+    if (!profile.tests.length) return profile;
+    profile.tests.shift();
+    profile.learningPath = buildLearningPath(profile);
+    profile.lastActiveAt = new Date().toISOString();
+    profile.activityStatus = "Test record removed";
+    return profile;
+  });
+}
+
 export function recordFinalExam(profileId, examRecord) {
   return updateProfile(profileId, (profile) => {
     profile.finalExams = profile.finalExams ?? [];
